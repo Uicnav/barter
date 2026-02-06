@@ -21,6 +21,11 @@ data class UserProfileDto(
     val rating: Double = 0.0,
     val avatarUrl: String = "",
     val email: String = "",
+    val interests: List<String> = emptyList(),
+    val hasSelectedInterests: Boolean = false,
+    val balance: Double = 0.0,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
 )
 
 @Serializable
@@ -29,12 +34,17 @@ data class RegisterRequest(
     val location: String,
     val email: String,
     val password: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
 )
 
 @Serializable
 data class AuthResponse(
     val user: UserProfileDto,
 )
+
+@Serializable
+data class LoginRequest(val email: String, val password: String)
 
 @Serializable
 data class ListingDto(
@@ -45,6 +55,11 @@ data class ListingDto(
     val description: String,
     val imageUrl: String = "",
     val tags: List<String> = emptyList(),
+    val estimatedValue: Double? = null,
+    val createdAtMs: Long = 0L,
+    val validUntilMs: Long? = null,
+    val isHidden: Boolean = false,
+    val availability: String = "AVAILABLE",
 )
 
 @Serializable
@@ -97,6 +112,76 @@ data class ProposeDealRequest(
 @Serializable
 data class UpdateDealStatusRequest(val status: String)
 
+@Serializable
+data class UpdateInterestsRequest(val interests: List<String>)
+
+@Serializable
+data class CreateListingRequest(
+    val title: String,
+    val description: String,
+    val kind: String,
+    val tags: List<String> = emptyList(),
+    val estimatedValue: Double? = null,
+    val imageUrl: String = "",
+    val validUntilMs: Long? = null,
+)
+
+@Serializable
+data class RenewRequest(val newValidUntilMs: Long)
+
+@Serializable
+data class UpdateAvailabilityRequest(val availability: String)
+
+@Serializable
+data class TopUpRequest(val amount: Double)
+
+@Serializable
+data class BalanceResponse(val balance: Double)
+
+@Serializable
+data class CountDto(val count: Int)
+
+@Serializable
+data class ProfileStatsDto(
+    val activeListingsCount: Int,
+    val completedDealsCount: Int,
+    val matchesCount: Int,
+)
+
+@Serializable
+data class EnrichedMatchDto(
+    val match: MatchDto,
+    val lastMessage: MessageDto? = null,
+    val unreadCount: Int = 0,
+)
+
+@Serializable
+data class NotificationDto(
+    val id: String,
+    val recipientUserId: String,
+    val type: String,
+    val title: String,
+    val body: String,
+    val relatedListingId: String? = null,
+    val relatedMatchId: String? = null,
+    val timestampMs: Long,
+    val isRead: Boolean = false,
+)
+
+// ── Constants ─────────────────────────────────────────────
+
+private const val RENEWAL_COST = 5.0
+
+private fun haversineDistance(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+    val r = 6371.0 // Earth radius in km
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLng = Math.toRadians(lng2 - lng1)
+    val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2)
+    return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
 // ── Helpers ────────────────────────────────────────────────
 
 private fun readUser(row: ResultRow) = UserProfileDto(
@@ -106,12 +191,45 @@ private fun readUser(row: ResultRow) = UserProfileDto(
     rating = row[Users.rating],
     avatarUrl = row[Users.avatarUrl],
     email = row[Users.email],
+    interests = row[Users.interests].split(",").filter { it.isNotBlank() },
+    hasSelectedInterests = row[Users.hasSelectedInterests],
+    balance = row[Users.balance],
+    latitude = row[Users.latitude],
+    longitude = row[Users.longitude],
 )
+
+private fun readListing(row: ResultRow, owner: UserProfileDto, tags: List<String>) = ListingDto(
+    id = row[Listings.id],
+    owner = owner,
+    kind = row[Listings.kind],
+    title = row[Listings.title],
+    description = row[Listings.description],
+    imageUrl = row[Listings.imageUrl],
+    tags = tags,
+    estimatedValue = row[Listings.estimatedValue],
+    createdAtMs = row[Listings.createdAt],
+    validUntilMs = row[Listings.validUntilMs],
+    isHidden = row[Listings.isHidden],
+    availability = row[Listings.availability],
+)
+
+/**
+ * Read a full ListingDto for a given listing row inside a transaction.
+ */
+private fun readFullListing(row: ResultRow): ListingDto {
+    val owner = Users.selectAll().where { Users.id eq row[Listings.ownerId] }.single()
+    val tags = ListingTags.selectAll()
+        .where { ListingTags.listingId eq row[Listings.id] }
+        .map { it[ListingTags.tag] }
+    return readListing(row, readUser(owner), tags)
+}
 
 // ── Route installation ─────────────────────────────────────
 
+private fun RoutingCall.userId(): String =
+    request.headers["X-User-Id"]?.takeIf { it.isNotBlank() } ?: "me"
+
 fun Route.barterRoutes() {
-    val currentUserId = "me" // Simplified; real app uses auth tokens
 
     // POST /api/auth/register
     post("/api/auth/register") {
@@ -138,6 +256,8 @@ fun Route.barterRoutes() {
                 it[password] = body.password
                 it[rating] = 0.0
                 it[avatarUrl] = ""
+                it[latitude] = body.latitude
+                it[longitude] = body.longitude
                 it[createdAt] = now
             }
             Users.selectAll().where { Users.id eq userId }.single()
@@ -146,24 +266,49 @@ fun Route.barterRoutes() {
         call.respond(HttpStatusCode.Created, AuthResponse(user = readUser(user)))
     }
 
+    // POST /api/auth/login
+    post("/api/auth/login") {
+        val body = call.receive<LoginRequest>()
+
+        val user = transaction {
+            Users.selectAll().where {
+                (Users.email eq body.email) and (Users.password eq body.password)
+            }.singleOrNull()
+        }
+
+        if (user == null) {
+            call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "Invalid email or password"))
+            return@post
+        }
+
+        call.respond(AuthResponse(user = readUser(user)))
+    }
+
+    // POST /api/auth/logout
+    post("/api/auth/logout") {
+        call.respond(HttpStatusCode.OK, mapOf("message" to "Logged out"))
+    }
+
     // GET /api/discovery
     get("/api/discovery") {
-        val listings = transaction {
-            Listings.selectAll().map { row ->
-                val owner = Users.selectAll().where { Users.id eq row[Listings.ownerId] }.single()
-                val tags = ListingTags.selectAll()
-                    .where { ListingTags.listingId eq row[Listings.id] }
-                    .map { it[ListingTags.tag] }
+        val userLat = call.request.queryParameters["lat"]?.toDoubleOrNull()
+        val userLng = call.request.queryParameters["lng"]?.toDoubleOrNull()
 
-                ListingDto(
-                    id = row[Listings.id],
-                    owner = readUser(owner),
-                    kind = row[Listings.kind],
-                    title = row[Listings.title],
-                    description = row[Listings.description],
-                    imageUrl = row[Listings.imageUrl],
-                    tags = tags,
-                )
+        val listings = transaction {
+            val all = Listings.selectAll().map { row -> readFullListing(row) }
+
+            if (userLat != null && userLng != null) {
+                all.sortedBy { listing ->
+                    val ownerLat = listing.owner.latitude
+                    val ownerLng = listing.owner.longitude
+                    if (ownerLat != null && ownerLng != null) {
+                        haversineDistance(userLat, userLng, ownerLat, ownerLng)
+                    } else {
+                        Double.MAX_VALUE
+                    }
+                }
+            } else {
+                all
             }
         }
         call.respond(listings)
@@ -179,7 +324,7 @@ fun Route.barterRoutes() {
         transaction {
             Swipes.insert {
                 it[id] = UUID.randomUUID().toString()
-                it[fromUserId] = currentUserId
+                it[fromUserId] = call.userId()
                 it[targetListingId] = listingId
                 it[action] = body.action
                 it[timestampMs] = now
@@ -218,12 +363,12 @@ fun Route.barterRoutes() {
         val match = transaction {
             Matches.insert {
                 it[id] = matchId
-                it[userAId] = currentUserId
+                it[userAId] = call.userId()
                 it[userBId] = ownerId
                 it[createdAtMs] = now
             }
 
-            val userA = Users.selectAll().where { Users.id eq currentUserId }.single()
+            val userA = Users.selectAll().where { Users.id eq call.userId() }.single()
             val userB = Users.selectAll().where { Users.id eq ownerId }.single()
 
             MatchDto(
@@ -241,7 +386,7 @@ fun Route.barterRoutes() {
     get("/api/matches") {
         val matches = transaction {
             Matches.selectAll().where {
-                (Matches.userAId eq currentUserId) or (Matches.userBId eq currentUserId)
+                (Matches.userAId eq call.userId()) or (Matches.userBId eq call.userId())
             }.map { row ->
                 val userA = Users.selectAll().where { Users.id eq row[Matches.userAId] }.single()
                 val userB = Users.selectAll().where { Users.id eq row[Matches.userBId] }.single()
@@ -254,6 +399,64 @@ fun Route.barterRoutes() {
             }
         }
         call.respond(matches)
+    }
+
+    // GET /api/matches/enriched
+    get("/api/matches/enriched") {
+        val enrichedMatches = transaction {
+            Matches.selectAll().where {
+                (Matches.userAId eq call.userId()) or (Matches.userBId eq call.userId())
+            }.map { row ->
+                val matchId = row[Matches.id]
+                val userA = Users.selectAll().where { Users.id eq row[Matches.userAId] }.single()
+                val userB = Users.selectAll().where { Users.id eq row[Matches.userBId] }.single()
+
+                val matchDto = MatchDto(
+                    id = matchId,
+                    userA = readUser(userA),
+                    userB = readUser(userB),
+                    createdAtMs = row[Matches.createdAtMs],
+                )
+
+                // Last message
+                val lastMessage = Messages.selectAll()
+                    .where { Messages.matchId eq matchId }
+                    .orderBy(Messages.timestampMs, SortOrder.DESC)
+                    .limit(1)
+                    .singleOrNull()
+                    ?.let { msgRow ->
+                        MessageDto(
+                            id = msgRow[Messages.id],
+                            matchId = msgRow[Messages.matchId],
+                            fromUserId = msgRow[Messages.fromUserId],
+                            text = msgRow[Messages.text],
+                            timestampMs = msgRow[Messages.timestampMs],
+                        )
+                    }
+
+                // Unread count: messages not from call.userId() that arrived after
+                // the last message sent by call.userId()
+                val lastSentTimestamp = Messages.selectAll()
+                    .where { (Messages.matchId eq matchId) and (Messages.fromUserId eq call.userId()) }
+                    .orderBy(Messages.timestampMs, SortOrder.DESC)
+                    .limit(1)
+                    .singleOrNull()
+                    ?.get(Messages.timestampMs) ?: 0L
+
+                val unreadCount = Messages.selectAll().where {
+                    (Messages.matchId eq matchId) and
+                        (Messages.fromUserId neq call.userId()) and
+                        (Messages.timestampMs greater lastSentTimestamp)
+                }.count().toInt()
+
+                EnrichedMatchDto(
+                    match = matchDto,
+                    lastMessage = lastMessage,
+                    unreadCount = unreadCount,
+                )
+            }
+        }
+        call.respond(enrichedMatches)
     }
 
     // GET /api/matches/{matchId}/messages
@@ -286,11 +489,11 @@ fun Route.barterRoutes() {
             Messages.insert {
                 it[Messages.id] = id
                 it[Messages.matchId] = matchId
-                it[fromUserId] = currentUserId
+                it[fromUserId] = call.userId()
                 it[text] = body.text
                 it[timestampMs] = now
             }
-            MessageDto(id, matchId, currentUserId, body.text, now)
+            MessageDto(id, matchId, call.userId(), body.text, now)
         }
         call.respond(HttpStatusCode.Created, msg)
     }
@@ -330,7 +533,7 @@ fun Route.barterRoutes() {
             Deals.insert {
                 it[id] = dealId
                 it[Deals.matchId] = matchId
-                it[proposerUserId] = currentUserId
+                it[proposerUserId] = call.userId()
                 it[status] = "PROPOSED"
                 it[createdAtMs] = now
             }
@@ -352,7 +555,7 @@ fun Route.barterRoutes() {
                     it[isOffer] = false
                 }
             }
-            DealDto(dealId, matchId, currentUserId, body.offer, body.request, "PROPOSED", now)
+            DealDto(dealId, matchId, call.userId(), body.offer, body.request, "PROPOSED", now)
         }
         call.respond(HttpStatusCode.Created, deal)
     }
@@ -373,12 +576,365 @@ fun Route.barterRoutes() {
     // GET /api/users/me
     get("/api/users/me") {
         val user = transaction {
-            Users.selectAll().where { Users.id eq currentUserId }.singleOrNull()
+            Users.selectAll().where { Users.id eq call.userId() }.singleOrNull()
         }
         if (user == null) {
             call.respond(HttpStatusCode.NotFound)
         } else {
             call.respond(readUser(user))
         }
+    }
+
+    // ── Interests ──────────────────────────────────────────
+
+    // PUT /api/user/interests
+    put("/api/user/interests") {
+        val body = call.receive<UpdateInterestsRequest>()
+
+        val updatedUser = transaction {
+            Users.update({ Users.id eq call.userId() }) {
+                it[interests] = body.interests.joinToString(",")
+                it[hasSelectedInterests] = true
+            }
+            Users.selectAll().where { Users.id eq call.userId() }.single()
+        }
+
+        call.respond(readUser(updatedUser))
+    }
+
+    // ── Listings CRUD ──────────────────────────────────────
+
+    // GET /api/listings/mine (must be before /api/listings/{listingId} to avoid route collision)
+    get("/api/listings/mine") {
+        val listings = transaction {
+            Listings.selectAll().where { Listings.ownerId eq call.userId() }
+                .map { row -> readFullListing(row) }
+        }
+        call.respond(listings)
+    }
+
+    // GET /api/listings/search
+    get("/api/listings/search") {
+        val q = call.request.queryParameters["q"]
+        val category = call.request.queryParameters["category"]
+        val sort = call.request.queryParameters["sort"]
+
+        val listings = transaction {
+            var query = Listings.selectAll()
+
+            // Text search on title
+            if (!q.isNullOrBlank()) {
+                query = query.where { Listings.title.lowerCase() like "%${q.lowercase()}%" }
+            }
+
+            val allListings = query.map { row -> readFullListing(row) }
+
+            // Filter by tag/category
+            val filtered = if (!category.isNullOrBlank()) {
+                allListings.filter { listing ->
+                    listing.tags.any { it.equals(category, ignoreCase = true) }
+                }
+            } else {
+                allListings
+            }
+
+            // Sort
+            when (sort) {
+                "NEWEST" -> filtered.sortedByDescending { it.createdAtMs }
+                "PRICE_LOW_HIGH" -> filtered.sortedBy { it.estimatedValue ?: Double.MAX_VALUE }
+                "PRICE_HIGH_LOW" -> filtered.sortedByDescending { it.estimatedValue ?: 0.0 }
+                else -> filtered
+            }
+        }
+        call.respond(listings)
+    }
+
+    // POST /api/listings
+    post("/api/listings") {
+        val body = call.receive<CreateListingRequest>()
+        val now = System.currentTimeMillis()
+        val listingId = UUID.randomUUID().toString()
+
+        val listing = transaction {
+            Listings.insert {
+                it[id] = listingId
+                it[ownerId] = call.userId()
+                it[kind] = body.kind
+                it[title] = body.title
+                it[description] = body.description
+                it[imageUrl] = body.imageUrl
+                it[estimatedValue] = body.estimatedValue
+                it[validUntilMs] = body.validUntilMs
+                it[createdAt] = now
+            }
+            body.tags.forEach { tag ->
+                ListingTags.insert {
+                    it[ListingTags.listingId] = listingId
+                    it[ListingTags.tag] = tag
+                }
+            }
+            Listings.selectAll().where { Listings.id eq listingId }.single().let { readFullListing(it) }
+        }
+
+        call.respond(HttpStatusCode.Created, listing)
+    }
+
+    // GET /api/listings/{listingId}
+    get("/api/listings/{listingId}") {
+        val listingId = call.parameters["listingId"]!!
+
+        val listing = transaction {
+            Listings.selectAll().where { Listings.id eq listingId }.singleOrNull()
+                ?.let { readFullListing(it) }
+        }
+
+        if (listing == null) {
+            call.respond(HttpStatusCode.NotFound, mapOf("error" to "Listing not found"))
+        } else {
+            call.respond(listing)
+        }
+    }
+
+    // PUT /api/listings/{listingId}
+    put("/api/listings/{listingId}") {
+        val listingId = call.parameters["listingId"]!!
+        val body = call.receive<CreateListingRequest>()
+
+        val listing = transaction {
+            Listings.update({ Listings.id eq listingId }) {
+                it[kind] = body.kind
+                it[title] = body.title
+                it[description] = body.description
+                it[imageUrl] = body.imageUrl
+                it[estimatedValue] = body.estimatedValue
+                it[validUntilMs] = body.validUntilMs
+            }
+
+            // Delete old tags and insert new ones
+            ListingTags.deleteWhere { ListingTags.listingId eq listingId }
+            body.tags.forEach { tag ->
+                ListingTags.insert {
+                    it[ListingTags.listingId] = listingId
+                    it[ListingTags.tag] = tag
+                }
+            }
+
+            Listings.selectAll().where { Listings.id eq listingId }.single().let { readFullListing(it) }
+        }
+
+        call.respond(listing)
+    }
+
+    // DELETE /api/listings/{listingId}
+    delete("/api/listings/{listingId}") {
+        val listingId = call.parameters["listingId"]!!
+
+        transaction {
+            ListingTags.deleteWhere { ListingTags.listingId eq listingId }
+            Listings.deleteWhere { Listings.id eq listingId }
+        }
+
+        call.respond(HttpStatusCode.NoContent)
+    }
+
+    // PATCH /api/listings/{listingId}/visibility
+    patch("/api/listings/{listingId}/visibility") {
+        val listingId = call.parameters["listingId"]!!
+
+        val listing = transaction {
+            val current = Listings.selectAll().where { Listings.id eq listingId }.singleOrNull()
+                ?: return@transaction null
+
+            val newHidden = !current[Listings.isHidden]
+            Listings.update({ Listings.id eq listingId }) {
+                it[isHidden] = newHidden
+            }
+
+            Listings.selectAll().where { Listings.id eq listingId }.single().let { readFullListing(it) }
+        }
+
+        if (listing == null) {
+            call.respond(HttpStatusCode.NotFound, mapOf("error" to "Listing not found"))
+        } else {
+            call.respond(listing)
+        }
+    }
+
+    // PATCH /api/listings/{listingId}/renew
+    patch("/api/listings/{listingId}/renew") {
+        val listingId = call.parameters["listingId"]!!
+        val body = call.receive<RenewRequest>()
+
+        val listing = transaction {
+            // Deduct renewal cost from user balance
+            val userRow = Users.selectAll().where { Users.id eq call.userId() }.single()
+            val currentBalance = userRow[Users.balance]
+            Users.update({ Users.id eq call.userId() }) {
+                it[balance] = currentBalance - RENEWAL_COST
+            }
+
+            Listings.update({ Listings.id eq listingId }) {
+                it[validUntilMs] = body.newValidUntilMs
+            }
+
+            Listings.selectAll().where { Listings.id eq listingId }.single().let { readFullListing(it) }
+        }
+
+        call.respond(listing)
+    }
+
+    // PATCH /api/listings/{listingId}/availability
+    patch("/api/listings/{listingId}/availability") {
+        val listingId = call.parameters["listingId"]!!
+        val body = call.receive<UpdateAvailabilityRequest>()
+
+        val listing = transaction {
+            Listings.update({ Listings.id eq listingId }) {
+                it[availability] = body.availability
+            }
+
+            Listings.selectAll().where { Listings.id eq listingId }.single().let { readFullListing(it) }
+        }
+
+        call.respond(listing)
+    }
+
+    // ── Balance ────────────────────────────────────────────
+
+    // POST /api/user/balance/topup
+    post("/api/user/balance/topup") {
+        val body = call.receive<TopUpRequest>()
+
+        val updatedUser = transaction {
+            val userRow = Users.selectAll().where { Users.id eq call.userId() }.single()
+            val currentBalance = userRow[Users.balance]
+            Users.update({ Users.id eq call.userId() }) {
+                it[balance] = currentBalance + body.amount
+            }
+            Users.selectAll().where { Users.id eq call.userId() }.single()
+        }
+
+        call.respond(readUser(updatedUser))
+    }
+
+    // GET /api/user/balance
+    get("/api/user/balance") {
+        val balance = transaction {
+            Users.selectAll().where { Users.id eq call.userId() }.single()[Users.balance]
+        }
+        call.respond(BalanceResponse(balance = balance))
+    }
+
+    // ── Stats ──────────────────────────────────────────────
+
+    // GET /api/user/stats
+    get("/api/user/stats") {
+        val stats = transaction {
+            val activeListingsCount = Listings.selectAll()
+                .where { (Listings.ownerId eq call.userId()) and (Listings.isHidden eq false) }
+                .count().toInt()
+
+            val completedDealsCount = Deals.selectAll()
+                .where { (Deals.proposerUserId eq call.userId()) and (Deals.status eq "COMPLETED") }
+                .count().toInt()
+
+            val matchesCount = Matches.selectAll()
+                .where { (Matches.userAId eq call.userId()) or (Matches.userBId eq call.userId()) }
+                .count().toInt()
+
+            ProfileStatsDto(
+                activeListingsCount = activeListingsCount,
+                completedDealsCount = completedDealsCount,
+                matchesCount = matchesCount,
+            )
+        }
+        call.respond(stats)
+    }
+
+    // ── Badges ─────────────────────────────────────────────
+
+    // GET /api/badges/matches
+    get("/api/badges/matches") {
+        val count = transaction {
+            Matches.selectAll().where {
+                (Matches.userAId eq call.userId()) or (Matches.userBId eq call.userId())
+            }.count().toInt()
+        }
+        call.respond(CountDto(count = count))
+    }
+
+    // GET /api/badges/messages
+    get("/api/badges/messages") {
+        val count = transaction {
+            // Get all match IDs for the current user
+            val matchIds = Matches.selectAll().where {
+                (Matches.userAId eq call.userId()) or (Matches.userBId eq call.userId())
+            }.map { it[Matches.id] }
+
+            // For each match, count messages not from call.userId() after last message from call.userId()
+            matchIds.sumOf { matchId ->
+                val lastSentTimestamp = Messages.selectAll()
+                    .where { (Messages.matchId eq matchId) and (Messages.fromUserId eq call.userId()) }
+                    .orderBy(Messages.timestampMs, SortOrder.DESC)
+                    .limit(1)
+                    .singleOrNull()
+                    ?.get(Messages.timestampMs) ?: 0L
+
+                Messages.selectAll().where {
+                    (Messages.matchId eq matchId) and
+                        (Messages.fromUserId neq call.userId()) and
+                        (Messages.timestampMs greater lastSentTimestamp)
+                }.count().toInt()
+            }
+        }
+        call.respond(CountDto(count = count))
+    }
+
+    // ── Notifications ──────────────────────────────────────
+
+    // GET /api/notifications
+    get("/api/notifications") {
+        val notifications = transaction {
+            Notifications.selectAll()
+                .where { Notifications.recipientUserId eq call.userId() }
+                .orderBy(Notifications.timestampMs, SortOrder.DESC)
+                .map { row ->
+                    NotificationDto(
+                        id = row[Notifications.id],
+                        recipientUserId = row[Notifications.recipientUserId],
+                        type = row[Notifications.type],
+                        title = row[Notifications.title],
+                        body = row[Notifications.body],
+                        relatedListingId = row[Notifications.relatedListingId],
+                        relatedMatchId = row[Notifications.relatedMatchId],
+                        timestampMs = row[Notifications.timestampMs],
+                        isRead = row[Notifications.isRead],
+                    )
+                }
+        }
+        call.respond(notifications)
+    }
+
+    // GET /api/notifications/unread-count
+    get("/api/notifications/unread-count") {
+        val count = transaction {
+            Notifications.selectAll().where {
+                (Notifications.recipientUserId eq call.userId()) and (Notifications.isRead eq false)
+            }.count().toInt()
+        }
+        call.respond(CountDto(count = count))
+    }
+
+    // PATCH /api/notifications/{notificationId}/read
+    patch("/api/notifications/{notificationId}/read") {
+        val notificationId = call.parameters["notificationId"]!!
+
+        transaction {
+            Notifications.update({ Notifications.id eq notificationId }) {
+                it[isRead] = true
+            }
+        }
+
+        call.respond(HttpStatusCode.OK, mapOf("success" to true))
     }
 }

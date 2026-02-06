@@ -19,6 +19,7 @@ object DatabaseFactory {
             SchemaUtils.create(
                 Users, Listings, ListingTags, Swipes,
                 Matches, Messages, Deals, DealItems,
+                Notifications,
             )
             seedData()
         }
@@ -27,22 +28,25 @@ object DatabaseFactory {
     private fun seedData() {
         val now = System.currentTimeMillis()
 
-        // Users
+        // Users — (id, name, city, rating, lat, lng)
+        data class SeedUser(val id: String, val name: String, val city: String, val rating: Double, val lat: Double, val lng: Double)
         listOf(
-            Triple("u1", "Mihai", "Bălți") to 4.6,
-            Triple("u2", "Alina", "Chișinău") to 4.9,
-            Triple("u3", "Sergiu", "Orhei") to 4.4,
-            Triple("u4", "Ana", "Chișinău") to 4.7,
-            Triple("u5", "Vlad", "Tiraspol") to 4.3,
-            Triple("u6", "Elena", "Chișinău") to 4.8,
-            Triple("u7", "Andrei", "Bălți") to 4.5,
-            Triple("u8", "Maria", "Comrat") to 4.9,
-        ).forEach { (triple, rating) ->
+            SeedUser("u1", "Mihai", "Bălți", 4.6, 47.7617, 27.9293),
+            SeedUser("u2", "Alina", "Chișinău", 4.9, 47.0105, 28.8638),
+            SeedUser("u3", "Sergiu", "Orhei", 4.4, 47.3816, 28.8253),
+            SeedUser("u4", "Ana", "Chișinău", 4.7, 47.0245, 28.8325),
+            SeedUser("u5", "Vlad", "Tiraspol", 4.3, 46.8403, 29.6433),
+            SeedUser("u6", "Elena", "Chișinău", 4.8, 47.0056, 28.8575),
+            SeedUser("u7", "Andrei", "Bălți", 4.5, 47.7556, 27.9167),
+            SeedUser("u8", "Maria", "Comrat", 4.9, 46.2955, 28.6578),
+        ).forEach { u ->
             Users.insert {
-                it[id] = triple.first
-                it[displayName] = triple.second
-                it[location] = triple.third
-                it[this.rating] = rating
+                it[id] = u.id
+                it[displayName] = u.name
+                it[location] = u.city
+                it[this.rating] = u.rating
+                it[latitude] = u.lat
+                it[longitude] = u.lng
                 it[createdAt] = now
             }
         }
@@ -53,6 +57,8 @@ object DatabaseFactory {
             it[displayName] = "Ion"
             it[location] = "Chișinău"
             it[rating] = 4.8
+            it[latitude] = 47.0105
+            it[longitude] = 28.8638
             it[createdAt] = now
         }
 

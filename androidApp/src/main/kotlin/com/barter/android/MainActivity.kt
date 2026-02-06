@@ -4,8 +4,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.barter.BarterAppRoot
+import com.barter.core.domain.location.AndroidLocationProvider
+import com.barter.core.domain.location.LocationProvider
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.init
+import org.koin.dsl.module
 
 /**
  * Android entrypoint.
@@ -15,6 +18,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         FileKit.init(this)
-        setContent { BarterAppRoot() }
+
+        val platformModule = module {
+            single<LocationProvider> {
+                AndroidLocationProvider(applicationContext)
+            }
+        }
+
+        setContent { BarterAppRoot(platformModule) }
     }
 }

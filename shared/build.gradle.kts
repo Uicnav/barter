@@ -65,9 +65,19 @@ kotlin {
             dependencies {
                 implementation("androidx.activity:activity-compose:1.9.3")
                 implementation("androidx.core:core-ktx:1.15.0")
+                implementation("io.ktor:ktor-client-okhttp:3.4.0")
+                implementation("com.google.android.gms:play-services-location:21.3.0")
             }
         }
-        val desktopMain by getting
-        val wasmJsMain by getting
+        val desktopMain by getting {
+            dependencies {
+                implementation("io.ktor:ktor-client-cio:3.4.0")
+            }
+        }
+        val wasmJsMain by getting {
+            dependencies {
+                implementation("io.ktor:ktor-client-js:3.4.0")
+            }
+        }
     }
 }

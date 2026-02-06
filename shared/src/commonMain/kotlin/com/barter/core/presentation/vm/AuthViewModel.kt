@@ -1,5 +1,6 @@
 package com.barter.core.presentation.vm
 
+import com.barter.core.domain.location.LocationProvider
 import com.barter.core.domain.model.AuthState
 import com.barter.core.domain.model.RegistrationRequest
 import com.barter.core.domain.model.UserProfile
@@ -27,6 +28,9 @@ data class RegisterFormState(
     val email: String = "",
     val password: String = "",
     val confirmPassword: String = "",
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val detectingLocation: Boolean = false,
     val loading: Boolean = false,
     val error: String? = null,
 )
@@ -36,6 +40,7 @@ class AuthViewModel(
     private val loginUseCase: LoginUseCase,
     private val registerUseCase: RegisterUseCase,
     private val logoutUseCase: LogoutUseCase,
+    private val locationProvider: LocationProvider,
 ) : BaseViewModel() {
 
     val authState: StateFlow<AuthState> = repo.authState
@@ -102,6 +107,26 @@ class AuthViewModel(
         _registerForm.value = _registerForm.value.copy(confirmPassword = value, error = null)
     }
 
+    fun detectLocation() {
+        scope.launch {
+            _registerForm.value = _registerForm.value.copy(detectingLocation = true)
+            val result = locationProvider.getCurrentLocation()
+            if (result != null) {
+                _registerForm.value = _registerForm.value.copy(
+                    location = result.cityName ?: _registerForm.value.location,
+                    latitude = result.latitude,
+                    longitude = result.longitude,
+                    detectingLocation = false,
+                )
+            } else {
+                _registerForm.value = _registerForm.value.copy(
+                    detectingLocation = false,
+                    error = "Could not detect location",
+                )
+            }
+        }
+    }
+
     fun register() {
         val form = _registerForm.value
 
@@ -121,6 +146,8 @@ class AuthViewModel(
                 location = form.location.trim(),
                 email = form.email.trim(),
                 password = form.password,
+                latitude = form.latitude,
+                longitude = form.longitude,
             )
             registerUseCase(request)
                 .onSuccess {

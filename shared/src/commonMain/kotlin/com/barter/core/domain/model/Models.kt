@@ -18,6 +18,8 @@ data class UserProfile(
     val interests: List<String> = emptyList(),
     val hasSelectedInterests: Boolean = false,
     val balance: Double = 0.0,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
 )
 
 // ── Platform pricing ─────────────────────────────────────
@@ -31,6 +33,8 @@ data class RegistrationRequest(
     val location: String,
     val email: String,
     val password: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
 )
 
 @Serializable
@@ -195,6 +199,7 @@ data class ProfileStats(
 )
 
 // ── Enriched match (with last message preview) ───────────
+@Serializable
 data class EnrichedMatch(
     val match: Match,
     val lastMessage: Message? = null,

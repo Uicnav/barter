@@ -12,17 +12,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.serialization.Serializable
 
-/**
- * Repository that talks to the Ktor server via REST.
- * Switch from FakeBarterRepository in AppDI to use this.
- *
- * Usage:
- *   single<BarterRepository> { KtorBarterRepository(get()) }
- */
 class KtorBarterRepository(
     private val client: HttpClient,
     private val baseUrl: String = "http://192.168.0.166",
 ) : BarterRepository {
+
+    private var authenticatedUserId: String? = null
+
+    private fun HttpRequestBuilder.withUserId() {
+        authenticatedUserId?.let { header("X-User-Id", it) }
+    }
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     override val authState: Flow<AuthState> = _authState.asStateFlow()
@@ -35,13 +34,34 @@ class KtorBarterRepository(
     private val messageCache = mutableMapOf<String, MutableStateFlow<List<Message>>>()
     private val dealCache = mutableMapOf<String, MutableStateFlow<List<Deal>>>()
 
-    // ── Auth (TODO: wire to server) ──────────────────────────
+    // ── Auth ──────────────────────────────────────────────────
+
     override suspend fun login(email: String, password: String): Result<UserProfile> {
-        TODO("Wire to server POST /api/auth/login")
+        return try {
+            @Serializable data class LoginReq(val email: String, val password: String)
+            @Serializable data class AuthResp(val user: UserProfile)
+
+            val response = client.post("$baseUrl/api/auth/login") {
+                contentType(ContentType.Application.Json)
+                setBody(LoginReq(email, password))
+            }
+            if (!response.status.isSuccess()) {
+                return Result.failure(Exception("Login failed: ${response.status}"))
+            }
+            val user = response.body<AuthResp>().user
+            authenticatedUserId = user.id
+            _currentUser.value = user
+            _authState.value = AuthState.Authenticated(user)
+            Result.success(user)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     override suspend fun register(request: RegistrationRequest): Result<UserProfile> {
         return try {
+            @Serializable data class AuthResp(val user: UserProfile)
+
             val response = client.post("$baseUrl/api/auth/register") {
                 contentType(ContentType.Application.Json)
                 setBody(request)
@@ -49,9 +69,8 @@ class KtorBarterRepository(
             if (!response.status.isSuccess()) {
                 return Result.failure(Exception("Registration failed: ${response.status}"))
             }
-            @Serializable data class AuthResponse(val user: UserProfile)
-            val authResponse: AuthResponse = response.body()
-            val user = authResponse.user
+            val user = response.body<AuthResp>().user
+            authenticatedUserId = user.id
             _currentUser.value = user
             _authState.value = AuthState.Authenticated(user)
             Result.success(user)
@@ -61,21 +80,47 @@ class KtorBarterRepository(
     }
 
     override suspend fun logout() {
-        TODO("Wire to server POST /api/auth/logout")
+        client.post("$baseUrl/api/auth/logout")
+        authenticatedUserId = null
+        _authState.value = AuthState.Unauthenticated
+        _currentUser.value = UserProfile("me", "...", "", 0.0)
     }
 
-    // ── Interests (TODO: wire to server) ─────────────────────
+    // ── Interests ─────────────────────────────────────────────
+
     override suspend fun updateInterests(interests: List<String>) {
-        TODO("Wire to server PUT /api/user/interests")
+        @Serializable data class Req(val interests: List<String>)
+
+        val user: UserProfile = client.put("$baseUrl/api/user/interests") {
+            withUserId()
+            contentType(ContentType.Application.Json)
+            setBody(Req(interests))
+        }.body()
+        _currentUser.value = user
+        val auth = _authState.value
+        if (auth is AuthState.Authenticated) {
+            _authState.value = AuthState.Authenticated(user)
+        }
     }
 
-    // ── Listings ─────────────────────────────────────────────
+    // ── Listings ──────────────────────────────────────────────
+
     override suspend fun createListing(
         title: String, description: String, kind: ListingKind,
         tags: List<String>, estimatedValue: Double?,
         imageUrl: String, validUntilMs: Long?,
     ): Listing {
-        TODO("Wire to server POST /api/listings")
+        @Serializable data class Req(
+            val title: String, val description: String, val kind: String,
+            val tags: List<String>, val estimatedValue: Double?,
+            val imageUrl: String, val validUntilMs: Long?,
+        )
+
+        return client.post("$baseUrl/api/listings") {
+            withUserId()
+            contentType(ContentType.Application.Json)
+            setBody(Req(title, description, kind.name, tags, estimatedValue, imageUrl, validUntilMs))
+        }.body()
     }
 
     override suspend fun updateListing(
@@ -83,69 +128,111 @@ class KtorBarterRepository(
         kind: ListingKind, tags: List<String>, estimatedValue: Double?,
         imageUrl: String, validUntilMs: Long?,
     ): Listing {
-        TODO("Wire to server PUT /api/listings/$listingId")
+        @Serializable data class Req(
+            val title: String, val description: String, val kind: String,
+            val tags: List<String>, val estimatedValue: Double?,
+            val imageUrl: String, val validUntilMs: Long?,
+        )
+
+        return client.put("$baseUrl/api/listings/$listingId") {
+            withUserId()
+            contentType(ContentType.Application.Json)
+            setBody(Req(title, description, kind.name, tags, estimatedValue, imageUrl, validUntilMs))
+        }.body()
     }
 
     override suspend fun deleteListing(listingId: String) {
-        TODO("Wire to server DELETE /api/listings/$listingId")
+        client.delete("$baseUrl/api/listings/$listingId") { withUserId() }
     }
 
     override suspend fun getListingById(listingId: String): Listing? {
-        TODO("Wire to server GET /api/listings/$listingId")
+        val response = client.get("$baseUrl/api/listings/$listingId") { withUserId() }
+        return if (response.status.isSuccess()) response.body() else null
     }
 
-    override suspend fun getMyListings(): List<Listing> {
-        TODO("Wire to server GET /api/listings/mine")
-    }
+    override suspend fun getMyListings(): List<Listing> =
+        client.get("$baseUrl/api/listings/mine") { withUserId() }.body()
 
-    override suspend fun toggleListingVisibility(listingId: String): Listing {
-        TODO("Wire to server PATCH /api/listings/$listingId/visibility")
-    }
+    override suspend fun toggleListingVisibility(listingId: String): Listing =
+        client.patch("$baseUrl/api/listings/$listingId/visibility") { withUserId() }.body()
 
     override suspend fun renewListing(listingId: String, newValidUntilMs: Long): Listing {
-        TODO("Wire to server PATCH /api/listings/$listingId/renew")
+        @Serializable data class Req(val newValidUntilMs: Long)
+
+        return client.patch("$baseUrl/api/listings/$listingId/renew") {
+            withUserId()
+            contentType(ContentType.Application.Json)
+            setBody(Req(newValidUntilMs))
+        }.body()
     }
 
     override suspend fun topUpBalance(amount: Double): UserProfile {
-        TODO("Wire to server POST /api/user/balance/topup")
+        @Serializable data class Req(val amount: Double)
+
+        val user: UserProfile = client.post("$baseUrl/api/user/balance/topup") {
+            withUserId()
+            contentType(ContentType.Application.Json)
+            setBody(Req(amount))
+        }.body()
+        _currentUser.value = user
+        return user
     }
 
     override suspend fun getBalance(): Double {
-        TODO("Wire to server GET /api/user/balance")
+        @Serializable data class Resp(val balance: Double)
+
+        return client.get("$baseUrl/api/user/balance") { withUserId() }.body<Resp>().balance
     }
 
     override suspend fun updateAvailability(listingId: String, availability: AvailabilityStatus): Listing {
-        TODO("Wire to server PATCH /api/listings/$listingId/availability")
+        @Serializable data class Req(val availability: String)
+
+        return client.patch("$baseUrl/api/listings/$listingId/availability") {
+            withUserId()
+            contentType(ContentType.Application.Json)
+            setBody(Req(availability.name))
+        }.body()
     }
 
-    override suspend fun searchListings(query: String, category: String?, sortBy: SortOption): List<Listing> {
-        TODO("Wire to server GET /api/listings/search")
-    }
+    override suspend fun searchListings(query: String, category: String?, sortBy: SortOption): List<Listing> =
+        client.get("$baseUrl/api/listings/search") {
+            withUserId()
+            parameter("q", query)
+            if (category != null) parameter("category", category)
+            parameter("sort", sortBy.name)
+        }.body()
+
+    // ── Discovery & Swipe ─────────────────────────────────────
 
     override suspend fun getDiscovery(interestFilter: List<String>): List<Listing> =
-        client.get("$baseUrl/api/discovery").body()
+        client.get("$baseUrl/api/discovery") {
+            withUserId()
+            val user = _currentUser.value
+            user.latitude?.let { parameter("lat", it) }
+            user.longitude?.let { parameter("lng", it) }
+        }.body()
 
     override suspend fun swipe(listingId: String, action: SwipeAction): Match? {
         @Serializable data class SwipeReq(val action: String)
         @Serializable data class SwipeResp(val match: Match?)
 
-        val resp: SwipeResp = client.post("$baseUrl/api/swipe/$listingId") {
+        return client.post("$baseUrl/api/swipe/$listingId") {
+            withUserId()
             contentType(ContentType.Application.Json)
             setBody(SwipeReq(action.name))
-        }.body()
-
-        return resp.match
+        }.body<SwipeResp>().match
     }
 
-    // ── Matches ─────────────────────────────────────────────
+    // ── Matches ───────────────────────────────────────────────
+
     override suspend fun getMatches(): List<Match> =
-        client.get("$baseUrl/api/matches").body()
+        client.get("$baseUrl/api/matches") { withUserId() }.body()
 
-    override suspend fun getEnrichedMatches(): List<EnrichedMatch> {
-        TODO("Wire to server GET /api/matches/enriched")
-    }
+    override suspend fun getEnrichedMatches(): List<EnrichedMatch> =
+        client.get("$baseUrl/api/matches/enriched") { withUserId() }.body()
 
-    // ── Chat ────────────────────────────────────────────────
+    // ── Chat ──────────────────────────────────────────────────
+
     override fun observeMessages(matchId: String): Flow<List<Message>> {
         val flow = messageCache.getOrPut(matchId) { MutableStateFlow(emptyList()) }
         return flow.asStateFlow()
@@ -155,6 +242,7 @@ class KtorBarterRepository(
         @Serializable data class Req(val text: String)
 
         val msg: Message = client.post("$baseUrl/api/matches/$matchId/messages") {
+            withUserId()
             contentType(ContentType.Application.Json)
             setBody(Req(text))
         }.body()
@@ -163,7 +251,8 @@ class KtorBarterRepository(
         flow.update { it + msg }
     }
 
-    // ── Deals ───────────────────────────────────────────────
+    // ── Deals ─────────────────────────────────────────────────
+
     override fun observeDeals(matchId: String): Flow<List<Deal>> {
         val flow = dealCache.getOrPut(matchId) { MutableStateFlow(emptyList()) }
         return flow.asStateFlow()
@@ -179,6 +268,7 @@ class KtorBarterRepository(
         )
 
         val deal: Deal = client.post("$baseUrl/api/matches/$matchId/deals") {
+            withUserId()
             contentType(ContentType.Application.Json)
             setBody(Req(offer, request, cashTopUp, note))
         }.body()
@@ -191,6 +281,7 @@ class KtorBarterRepository(
         @Serializable data class Req(val status: String)
 
         client.patch("$baseUrl/api/deals/$dealId") {
+            withUserId()
             contentType(ContentType.Application.Json)
             setBody(Req(status.name))
         }
@@ -202,29 +293,32 @@ class KtorBarterRepository(
         }
     }
 
-    // ── Stats & badges ──────────────────────────────────────
-    override suspend fun getProfileStats(): ProfileStats {
-        TODO("Wire to server GET /api/user/stats")
-    }
+    // ── Stats & badges ────────────────────────────────────────
+
+    override suspend fun getProfileStats(): ProfileStats =
+        client.get("$baseUrl/api/user/stats") { withUserId() }.body()
 
     override suspend fun getUnreadMatchCount(): Int {
-        TODO("Wire to server GET /api/badges/matches")
+        @Serializable data class Resp(val count: Int)
+        return client.get("$baseUrl/api/badges/matches") { withUserId() }.body<Resp>().count
     }
 
     override suspend fun getTotalUnreadMessageCount(): Int {
-        TODO("Wire to server GET /api/badges/messages")
+        @Serializable data class Resp(val count: Int)
+        return client.get("$baseUrl/api/badges/messages") { withUserId() }.body<Resp>().count
     }
 
-    // ── Notifications ──────────────────────────────────────
-    override suspend fun getNotifications(): List<Notification> {
-        TODO("Wire to server GET /api/notifications")
-    }
+    // ── Notifications ─────────────────────────────────────────
+
+    override suspend fun getNotifications(): List<Notification> =
+        client.get("$baseUrl/api/notifications") { withUserId() }.body()
 
     override suspend fun getUnreadNotificationCount(): Int {
-        TODO("Wire to server GET /api/notifications/unread-count")
+        @Serializable data class Resp(val count: Int)
+        return client.get("$baseUrl/api/notifications/unread-count") { withUserId() }.body<Resp>().count
     }
 
     override suspend fun markNotificationRead(notificationId: String) {
-        TODO("Wire to server PATCH /api/notifications/$notificationId/read")
+        client.patch("$baseUrl/api/notifications/$notificationId/read") { withUserId() }
     }
 }

@@ -42,4 +42,7 @@ dependencies {
 
     // FileKit — needed for FileKit.init(this) in MainActivity
     implementation("io.github.vinceglb:filekit-dialogs:0.12.0")
+
+    // Koin — needed for platform DI module in MainActivity
+    implementation("io.insert-koin:koin-core:4.1.1")
 }

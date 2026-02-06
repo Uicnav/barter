@@ -7,8 +7,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
@@ -16,6 +18,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.barter.core.di.AppDI
+import com.barter.core.presentation.components.rememberLocationPermissionLauncher
 import com.barter.core.presentation.theme.*
 import com.barter.core.presentation.vm.AuthViewModel
 
@@ -26,6 +29,11 @@ fun RegisterScreen(
 ) {
     val vm: AuthViewModel = remember { AppDI.get() }
     val form by vm.registerForm.collectAsState()
+
+    val locationPermissionLauncher = rememberLocationPermissionLauncher(
+        onGranted = { vm.detectLocation() },
+        onDenied = { /* permission denied — user can still type manually */ },
+    )
 
     Scaffold(
         topBar = {
@@ -79,21 +87,45 @@ fun RegisterScreen(
                 ),
             )
 
-            OutlinedTextField(
-                value = form.location,
-                onValueChange = vm::onRegisterLocationChange,
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Location") },
-                placeholder = { Text("City, Country") },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = BarterTeal,
-                    focusedLabelColor = BarterTeal,
-                    cursorColor = BarterTeal,
-                ),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = form.location,
+                    onValueChange = vm::onRegisterLocationChange,
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Location") },
+                    placeholder = { Text("City, Country") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = BarterTeal,
+                        focusedLabelColor = BarterTeal,
+                        cursorColor = BarterTeal,
+                    ),
+                )
+                Spacer(Modifier.width(8.dp))
+                IconButton(
+                    onClick = { locationPermissionLauncher.launch() },
+                    enabled = !form.detectingLocation,
+                ) {
+                    if (form.detectingLocation) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = BarterTeal,
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.MyLocation,
+                            contentDescription = "Detect location",
+                            tint = BarterTeal,
+                        )
+                    }
+                }
+            }
 
             OutlinedTextField(
                 value = form.email,

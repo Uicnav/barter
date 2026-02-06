@@ -10,6 +10,11 @@ object Users : Table("users") {
     val avatarUrl = varchar("avatar_url", 500).default("")
     val email = varchar("email", 200).default("")
     val password = varchar("password", 200).default("")
+    val interests = varchar("interests", 1000).default("")
+    val hasSelectedInterests = bool("has_selected_interests").default(false)
+    val balance = double("balance").default(0.0)
+    val latitude = double("latitude").nullable()
+    val longitude = double("longitude").nullable()
     val createdAt = long("created_at")
 
     override val primaryKey = PrimaryKey(id)
@@ -22,6 +27,10 @@ object Listings : Table("listings") {
     val title = varchar("title", 200)
     val description = text("description")
     val imageUrl = varchar("image_url", 500).default("")
+    val isHidden = bool("is_hidden").default(false)
+    val validUntilMs = long("valid_until_ms").nullable()
+    val estimatedValue = double("estimated_value").nullable()
+    val availability = varchar("availability", 20).default("AVAILABLE")
     val createdAt = long("created_at")
 
     override val primaryKey = PrimaryKey(id)
@@ -83,6 +92,20 @@ object DealItems : Table("deal_items") {
     val title = varchar("title", 200)
     val kind = varchar("kind", 20)
     val isOffer = bool("is_offer") // true = offered, false = requested
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Notifications : Table("notifications") {
+    val id = varchar("id", 36)
+    val recipientUserId = varchar("recipient_user_id", 36).references(Users.id)
+    val type = varchar("type", 30) // LIKE_RECEIVED, MATCH_CREATED
+    val title = varchar("title", 200)
+    val body = text("body")
+    val relatedListingId = varchar("related_listing_id", 36).nullable()
+    val relatedMatchId = varchar("related_match_id", 36).nullable()
+    val timestampMs = long("timestamp_ms")
+    val isRead = bool("is_read").default(false)
 
     override val primaryKey = PrimaryKey(id)
 }

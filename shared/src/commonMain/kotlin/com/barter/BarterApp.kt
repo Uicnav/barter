@@ -24,10 +24,12 @@ import com.barter.core.presentation.theme.BarterTeal
 import com.barter.core.presentation.theme.BarterTheme
 import com.barter.core.presentation.vm.AuthViewModel
 import com.barter.core.presentation.vm.BadgeViewModel
+import org.koin.core.module.Module
+import org.koin.dsl.module
 
 @Composable
-fun BarterAppRoot() {
-    remember { AppDI.init() }
+fun BarterAppRoot(platformModule: Module = module {}) {
+    remember { AppDI.init(platformModule) }
 
     setSingletonImageLoaderFactory { context ->
         ImageLoader.Builder(context)

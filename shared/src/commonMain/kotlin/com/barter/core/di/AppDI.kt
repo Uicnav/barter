@@ -1,21 +1,44 @@
 package com.barter.core.di
 
-import com.barter.core.data.FakeBarterRepository
+import com.barter.core.data.KtorBarterRepository
+import com.barter.core.domain.location.LocationProvider
+import com.barter.core.domain.location.LocationResult
 import com.barter.core.domain.repo.BarterRepository
 import com.barter.core.domain.usecase.*
 import com.barter.core.presentation.vm.*
+import io.ktor.client.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.serialization.kotlinx.json.*
+import kotlinx.serialization.json.Json
 import org.koin.core.Koin
 import org.koin.core.context.startKoin
+import org.koin.core.module.Module
 import org.koin.dsl.module
 
 object AppDI {
     var koin: Koin? = null
 
-    fun init(): Koin {
+    /** Railway public URL — update after `railway up` */
+    private const val BASE_URL = "https://barter-production-12da.up.railway.app"
+
+    fun init(platformModule: Module = module {}): Koin {
         if (koin != null) return koin!!
 
         val appModule = module {
-            single<BarterRepository> { FakeBarterRepository() }
+            single {
+                HttpClient {
+                    install(ContentNegotiation) {
+                        json(Json {
+                            ignoreUnknownKeys = true
+                            isLenient = true
+                        })
+                    }
+                }
+            }
+            single<BarterRepository> { KtorBarterRepository(get(), BASE_URL) }
+            single<LocationProvider> { object : LocationProvider {
+                override suspend fun getCurrentLocation(): LocationResult? = null
+            } }
 
             // Use cases
             factory { LoadDiscoveryUseCase(get()) }
@@ -47,7 +70,7 @@ object AppDI {
             factory { MarkNotificationReadUseCase(get()) }
 
             // ViewModels
-            single { AuthViewModel(get(), get(), get(), get()) }
+            single { AuthViewModel(get(), get(), get(), get(), get()) }
             factory { DiscoveryViewModel(get(), get(), get()) }
             factory { MatchesViewModel(get()) }
             factory { ChatViewModel(get()) }
@@ -63,7 +86,7 @@ object AppDI {
             single { BadgeViewModel(get(), get()) }
         }
 
-        koin = startKoin { modules(appModule) }.koin
+        koin = startKoin { modules(appModule, platformModule) }.koin
         return koin!!
     }
 
