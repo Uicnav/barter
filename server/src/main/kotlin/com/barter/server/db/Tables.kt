@@ -96,6 +96,22 @@ object DealItems : Table("deal_items") {
     override val primaryKey = PrimaryKey(id)
 }
 
+object Reviews : Table("reviews") {
+    val id = varchar("id", 36)
+    val dealId = varchar("deal_id", 36).references(Deals.id)
+    val reviewerUserId = varchar("reviewer_user_id", 36).references(Users.id)
+    val reviewedUserId = varchar("reviewed_user_id", 36).references(Users.id)
+    val rating = integer("rating") // 1-5
+    val comment = text("comment").default("")
+    val timestampMs = long("timestamp_ms")
+
+    override val primaryKey = PrimaryKey(id)
+
+    init {
+        uniqueIndex(dealId, reviewerUserId)
+    }
+}
+
 object Notifications : Table("notifications") {
     val id = varchar("id", 36)
     val recipientUserId = varchar("recipient_user_id", 36).references(Users.id)

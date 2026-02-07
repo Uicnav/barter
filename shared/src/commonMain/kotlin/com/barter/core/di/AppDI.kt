@@ -75,13 +75,15 @@ object AppDI {
             factory { LoadNotificationsUseCase(get()) }
             factory { GetUnreadNotificationCountUseCase(get()) }
             factory { MarkNotificationReadUseCase(get()) }
+            factory { SubmitReviewUseCase(get()) }
+            factory { GetUserReviewsUseCase(get()) }
 
             // ViewModels
             single { AuthViewModel(get(), get(), get(), get(), get(), get()) }
             factory { DiscoveryViewModel(get(), get(), get()) }
             factory { MatchesViewModel(get()) }
             factory { ChatViewModel(get()) }
-            factory { DealViewModel(get(), get()) }
+            factory { DealViewModel(get(), get(), get()) }
             factory { InterestsViewModel(get(), get()) }
             factory { CreateListingViewModel(get()) }
             factory { MyListingsViewModel(get(), get(), get(), get(), get()) }
@@ -90,6 +92,8 @@ object AppDI {
             factory { BrowseViewModel(get(), get(), get()) }
             factory { ProfileStatsViewModel(get()) }
             factory { NotificationsViewModel(get(), get()) }
+            factory { UserReviewsViewModel(get()) }
+            factory { ChatListViewModel(get()) }
             single { BadgeViewModel(get(), get()) }
         }
 

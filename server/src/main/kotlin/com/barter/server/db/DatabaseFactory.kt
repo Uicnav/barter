@@ -19,7 +19,7 @@ object DatabaseFactory {
             SchemaUtils.create(
                 Users, Listings, ListingTags, Swipes,
                 Matches, Messages, Deals, DealItems,
-                Notifications,
+                Notifications, Reviews,
             )
             seedData()
         }

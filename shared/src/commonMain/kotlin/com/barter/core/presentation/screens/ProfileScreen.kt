@@ -16,7 +16,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,8 +39,9 @@ import com.barter.core.presentation.vm.ProfileStatsViewModel
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProfileScreen(
-    onNavigateToMyListings: () -> Unit,
     onNavigateToEditInterests: () -> Unit,
+    onNavigateToReviews: () -> Unit,
+    onNavigateToNotifications: () -> Unit,
     onLogout: () -> Unit,
 ) {
     val authVm: AuthViewModel = remember { AppDI.get() }
@@ -360,9 +363,18 @@ fun ProfileScreen(
         ) {
             Column {
                 ProfileMenuItem(
-                    icon = { Icon(Icons.AutoMirrored.Filled.List, null, tint = BarterTeal) },
-                    label = "My Listings",
-                    onClick = onNavigateToMyListings,
+                    icon = { Icon(Icons.Default.Notifications, null, tint = BarterTeal) },
+                    label = "Notifications",
+                    onClick = onNavigateToNotifications,
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
+                ProfileMenuItem(
+                    icon = { Icon(Icons.Default.Star, null, tint = BarterAmber) },
+                    label = "My Reviews",
+                    onClick = onNavigateToReviews,
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(horizontal = 16.dp),

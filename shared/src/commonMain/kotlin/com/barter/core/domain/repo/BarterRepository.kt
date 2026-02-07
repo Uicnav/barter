@@ -71,6 +71,10 @@ interface BarterRepository {
     // Geocode
     suspend fun autocompleteLocation(query: String): List<GeocodeSuggestion>
 
+    // Reviews
+    suspend fun submitReview(dealId: String, rating: Int, comment: String): Review
+    suspend fun getReviewsForUser(userId: String): List<Review>
+
     // Notifications
     suspend fun getNotifications(): List<Notification>
     suspend fun getUnreadNotificationCount(): Int

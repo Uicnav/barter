@@ -175,6 +175,26 @@ data class NotificationDto(
     val isRead: Boolean = false,
 )
 
+// ── Review DTOs ──────────────────────────────────────────
+
+@Serializable
+data class ReviewDto(
+    val id: String,
+    val dealId: String,
+    val reviewerUserId: String,
+    val reviewedUserId: String,
+    val rating: Int,
+    val comment: String,
+    val timestampMs: Long,
+    val reviewerName: String = "",
+)
+
+@Serializable
+data class SubmitReviewRequest(val dealId: String, val rating: Int, val comment: String = "")
+
+@Serializable
+data class UserRatingSummary(val averageRating: Double, val reviewCount: Int)
+
 // ── Geocode DTOs ──────────────────────────────────────────
 
 @Serializable
@@ -1012,6 +1032,144 @@ fun Route.barterRoutes() {
         }
 
         call.respond(HttpStatusCode.OK, mapOf("success" to true))
+    }
+
+    // ── Reviews ─────────────────────────────────────────────
+
+    // POST /api/reviews
+    post("/api/reviews") {
+        val body = call.receive<SubmitReviewRequest>()
+        val userId = call.userId()
+        val now = System.currentTimeMillis()
+
+        // Validate rating range
+        if (body.rating !in 1..5) {
+            call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Rating must be between 1 and 5"))
+            return@post
+        }
+
+        val result = transaction {
+            // Find the deal
+            val dealRow = Deals.selectAll().where { Deals.id eq body.dealId }.singleOrNull()
+                ?: return@transaction "Deal not found" to null
+
+            // Deal must be COMPLETED
+            if (dealRow[Deals.status] != "COMPLETED") {
+                return@transaction "Deal is not completed" to null
+            }
+
+            // Find the match to determine participants
+            val matchId = dealRow[Deals.matchId]
+            val matchRow = Matches.selectAll().where { Matches.id eq matchId }.singleOrNull()
+                ?: return@transaction "Match not found" to null
+
+            val userAId = matchRow[Matches.userAId]
+            val userBId = matchRow[Matches.userBId]
+
+            // Caller must be a participant
+            if (userId != userAId && userId != userBId) {
+                return@transaction "You are not a participant in this deal" to null
+            }
+
+            // Determine who is being reviewed (the other party)
+            val reviewedUserId = if (userId == userAId) userBId else userAId
+
+            // Check if already reviewed
+            val existing = Reviews.selectAll().where {
+                (Reviews.dealId eq body.dealId) and (Reviews.reviewerUserId eq userId)
+            }.singleOrNull()
+            if (existing != null) {
+                return@transaction "You have already reviewed this deal" to null
+            }
+
+            // Insert review
+            val reviewId = UUID.randomUUID().toString()
+            Reviews.insert {
+                it[id] = reviewId
+                it[Reviews.dealId] = body.dealId
+                it[Reviews.reviewerUserId] = userId
+                it[Reviews.reviewedUserId] = reviewedUserId
+                it[rating] = body.rating
+                it[comment] = body.comment
+                it[timestampMs] = now
+            }
+
+            // Recalculate average rating for the reviewed user
+            val allRatings = Reviews.selectAll()
+                .where { Reviews.reviewedUserId eq reviewedUserId }
+                .map { it[Reviews.rating] }
+            val avgRating = if (allRatings.isNotEmpty()) allRatings.average() else 0.0
+            Users.update({ Users.id eq reviewedUserId }) {
+                it[Users.rating] = kotlin.math.round(avgRating * 10) / 10.0
+            }
+
+            // Get reviewer name
+            val reviewerRow = Users.selectAll().where { Users.id eq userId }.single()
+            val reviewerName = reviewerRow[Users.displayName]
+
+            null to ReviewDto(
+                id = reviewId,
+                dealId = body.dealId,
+                reviewerUserId = userId,
+                reviewedUserId = reviewedUserId,
+                rating = body.rating,
+                comment = body.comment,
+                timestampMs = now,
+                reviewerName = reviewerName,
+            )
+        }
+
+        val (error, review) = result
+        if (error != null) {
+            call.respond(HttpStatusCode.BadRequest, mapOf("error" to error))
+        } else {
+            call.respond(HttpStatusCode.Created, review!!)
+        }
+    }
+
+    // GET /api/users/{userId}/reviews
+    get("/api/users/{userId}/reviews") {
+        val userId = call.parameters["userId"]!!
+
+        val reviews = transaction {
+            Reviews.selectAll()
+                .where { Reviews.reviewedUserId eq userId }
+                .orderBy(Reviews.timestampMs, SortOrder.DESC)
+                .map { row ->
+                    val reviewerRow = Users.selectAll()
+                        .where { Users.id eq row[Reviews.reviewerUserId] }
+                        .singleOrNull()
+                    ReviewDto(
+                        id = row[Reviews.id],
+                        dealId = row[Reviews.dealId],
+                        reviewerUserId = row[Reviews.reviewerUserId],
+                        reviewedUserId = row[Reviews.reviewedUserId],
+                        rating = row[Reviews.rating],
+                        comment = row[Reviews.comment],
+                        timestampMs = row[Reviews.timestampMs],
+                        reviewerName = reviewerRow?.get(Users.displayName) ?: "Unknown",
+                    )
+                }
+        }
+        call.respond(reviews)
+    }
+
+    // GET /api/users/{userId}/rating
+    get("/api/users/{userId}/rating") {
+        val userId = call.parameters["userId"]!!
+
+        val summary = transaction {
+            val allRatings = Reviews.selectAll()
+                .where { Reviews.reviewedUserId eq userId }
+                .map { it[Reviews.rating] }
+            UserRatingSummary(
+                averageRating = if (allRatings.isNotEmpty()) {
+                    kotlin.math.round(allRatings.average() * 10) / 10.0
+                } else 0.0,
+                reviewCount = allRatings.size,
+            )
+        }
+        call.respond(summary)
     }
 
     // ── Geocode autocomplete ──────────────────────────────

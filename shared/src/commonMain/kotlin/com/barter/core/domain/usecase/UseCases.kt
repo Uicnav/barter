@@ -133,6 +133,16 @@ class AutocompleteLocationUseCase(private val repo: BarterRepository) {
         repo.autocompleteLocation(query)
 }
 
+// ── Reviews ──────────────────────────────────────────────
+class SubmitReviewUseCase(private val repo: BarterRepository) {
+    suspend operator fun invoke(dealId: String, rating: Int, comment: String): Review =
+        repo.submitReview(dealId, rating, comment)
+}
+
+class GetUserReviewsUseCase(private val repo: BarterRepository) {
+    suspend operator fun invoke(userId: String): List<Review> = repo.getReviewsForUser(userId)
+}
+
 // ── Notifications ────────────────────────────────────────
 class LoadNotificationsUseCase(private val repo: BarterRepository) {
     suspend operator fun invoke(): List<Notification> = repo.getNotifications()

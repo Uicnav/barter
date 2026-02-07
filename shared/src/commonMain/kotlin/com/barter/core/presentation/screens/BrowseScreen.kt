@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
@@ -34,6 +35,7 @@ import com.barter.core.presentation.vm.BrowseViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowseScreen(
+    onBack: () -> Unit,
     onOpenListingDetail: (listingId: String) -> Unit,
     onOpenChat: (matchId: String) -> Unit = {},
 ) {
@@ -42,7 +44,22 @@ fun BrowseScreen(
 
     LaunchedEffect(Unit) { vm.load() }
 
-    Box(Modifier.fillMaxSize()) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Browse") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
+            )
+        },
+    ) { padding ->
+    Box(Modifier.fillMaxSize().padding(padding)) {
         Column(Modifier.fillMaxSize()) {
             // Search bar — filled style
             Surface(
@@ -220,6 +237,7 @@ fun BrowseScreen(
             )
         }
     }
+    } // end Scaffold
 }
 
 @Composable

@@ -217,6 +217,19 @@ data class GeocodeSuggestion(
     val longitude: Double,
 )
 
+// ── Reviews ──────────────────────────────────────────────
+@Serializable
+data class Review(
+    val id: String,
+    val dealId: String,
+    val reviewerUserId: String,
+    val reviewedUserId: String,
+    val rating: Int,
+    val comment: String,
+    val timestampMs: Long,
+    val reviewerName: String = "",
+)
+
 // ── Notifications ────────────────────────────────────────
 @Serializable
 enum class NotificationType { LIKE_RECEIVED, MATCH_CREATED }

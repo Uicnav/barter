@@ -12,10 +12,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,7 +47,7 @@ import kotlinx.coroutines.launch
 fun DiscoveryScreen(
     onOpenMatches: () -> Unit,
     onOpenChat: (matchId: String) -> Unit,
-    onCreateListing: () -> Unit,
+    onOpenBrowse: () -> Unit,
     onOpenListingDetail: (listingId: String) -> Unit,
 ) {
     val vm: DiscoveryViewModel = remember { AppDI.get() }
@@ -71,6 +71,28 @@ fun DiscoveryScreen(
             }
             else -> {
                 Column(Modifier.fillMaxSize()) {
+                    // Top bar with search
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Discover",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        IconButton(onClick = onOpenBrowse) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = BarterTeal,
+                            )
+                        }
+                    }
+
                     // Category filter chips
                     if (state.categories.isNotEmpty()) {
                         LazyRow(
@@ -179,18 +201,6 @@ fun DiscoveryScreen(
                     }
                 }
             }
-        }
-
-        // FAB for creating new listing
-        FloatingActionButton(
-            onClick = onCreateListing,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 80.dp),
-            containerColor = BarterAmber,
-            contentColor = Color.White,
-        ) {
-            Icon(Icons.Default.Add, "Create listing")
         }
 
         // Match celebration overlay

@@ -348,6 +348,21 @@ class KtorBarterRepository(
             parameter("q", query)
         }.body()
 
+    // ── Reviews ──────────────────────────────────────────────
+
+    override suspend fun submitReview(dealId: String, rating: Int, comment: String): Review {
+        @Serializable data class Req(val dealId: String, val rating: Int, val comment: String)
+
+        return client.post("$baseUrl/api/reviews") {
+            withUserId()
+            contentType(ContentType.Application.Json)
+            setBody(Req(dealId, rating, comment))
+        }.body()
+    }
+
+    override suspend fun getReviewsForUser(userId: String): List<Review> =
+        client.get("$baseUrl/api/users/$userId/reviews") { withUserId() }.body()
+
     // ── Notifications ─────────────────────────────────────────
 
     override suspend fun getNotifications(): List<Notification> =

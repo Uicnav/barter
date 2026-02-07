@@ -2,11 +2,11 @@ package com.barter
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -19,7 +19,6 @@ import com.barter.core.di.AppDI
 import com.barter.core.domain.model.AuthState
 import com.barter.core.presentation.navigation.Screen
 import com.barter.core.presentation.screens.*
-import com.barter.core.presentation.theme.BarterCoral
 import com.barter.core.presentation.theme.BarterTeal
 import com.barter.core.presentation.theme.BarterTheme
 import com.barter.core.presentation.vm.AuthViewModel
@@ -88,8 +87,8 @@ private fun AuthFlow() {
 
 @Composable
 private fun MainApp() {
-    var screen by remember { mutableStateOf<Screen>(Screen.Discovery) }
-    var previousMainScreen by remember { mutableStateOf<Screen>(Screen.Discovery) }
+    var screen by remember { mutableStateOf<Screen>(Screen.Swipe) }
+    var previousMainScreen by remember { mutableStateOf<Screen>(Screen.Swipe) }
 
     val badgeVm: BadgeViewModel = remember { AppDI.get() }
     val badgeState by badgeVm.state.collectAsState()
@@ -100,17 +99,17 @@ private fun MainApp() {
     Scaffold(
         containerColor = Color.Transparent,
         bottomBar = {
-            val isMain = screen is Screen.Browse ||
-                    screen is Screen.Discovery ||
+            val isMain = screen is Screen.Swipe ||
                     screen is Screen.Matches ||
-                    screen is Screen.Notifications ||
+                    screen is Screen.Publish ||
+                    screen is Screen.ChatList ||
                     screen is Screen.Profile
             if (isMain) {
                 Surface(shadowElevation = 8.dp) {
                     BarterBottomBar(
                         current = screen,
                         matchBadgeCount = badgeState.matchCount,
-                        notificationBadgeCount = badgeState.notificationCount,
+                        unreadMessageCount = badgeState.notificationCount,
                         onNavigate = { screen = it },
                     )
                 }
@@ -123,19 +122,12 @@ private fun MainApp() {
                 .padding(padding)
         ) {
             when (val s = screen) {
-                Screen.Browse -> BrowseScreen(
-                    onOpenListingDetail = {
-                        previousMainScreen = Screen.Browse
-                        screen = Screen.ListingDetail(it)
-                    },
-                    onOpenChat = { screen = Screen.Chat(it) },
-                )
-                Screen.Discovery -> DiscoveryScreen(
+                Screen.Swipe -> DiscoveryScreen(
                     onOpenMatches = { screen = Screen.Matches },
                     onOpenChat = { screen = Screen.Chat(it) },
-                    onCreateListing = { screen = Screen.CreateListing },
+                    onOpenBrowse = { screen = Screen.Browse },
                     onOpenListingDetail = {
-                        previousMainScreen = Screen.Discovery
+                        previousMainScreen = Screen.Swipe
                         screen = Screen.ListingDetail(it)
                     },
                 )
@@ -143,22 +135,43 @@ private fun MainApp() {
                     onOpenChat = { screen = Screen.Chat(it) },
                     onOpenDeal = { screen = Screen.Deal(it) },
                 )
+                Screen.Publish -> MyListingsScreen(
+                    onBack = null,
+                    onCreateListing = { screen = Screen.CreateListing },
+                    onEditListing = { screen = Screen.EditListing(it) },
+                )
+                Screen.ChatList -> ChatListScreen(
+                    onOpenChat = { screen = Screen.Chat(it) },
+                )
+                Screen.Profile -> {
+                    val authVmLocal: AuthViewModel = remember { AppDI.get() }
+                    val currentUser by authVmLocal.currentUser.collectAsState()
+                    ProfileScreen(
+                        onNavigateToEditInterests = { screen = Screen.EditInterests },
+                        onNavigateToReviews = { screen = Screen.UserReviews(currentUser.id) },
+                        onNavigateToNotifications = { screen = Screen.Notifications },
+                        onLogout = { /* authState will go to Unauthenticated */ },
+                    )
+                }
+                Screen.Browse -> BrowseScreen(
+                    onBack = { screen = Screen.Swipe },
+                    onOpenListingDetail = {
+                        previousMainScreen = Screen.Swipe
+                        screen = Screen.ListingDetail(it)
+                    },
+                    onOpenChat = { screen = Screen.Chat(it) },
+                )
                 is Screen.Chat -> ChatScreen(
                     matchId = s.matchId,
-                    onBack = { screen = Screen.Matches },
+                    onBack = { screen = Screen.ChatList },
                     onOpenDeal = { screen = Screen.Deal(s.matchId) },
                 )
                 is Screen.Deal -> DealScreen(
                     matchId = s.matchId,
                     onBack = { screen = Screen.Chat(s.matchId) },
                 )
-                Screen.Profile -> ProfileScreen(
-                    onNavigateToMyListings = { screen = Screen.MyListings },
-                    onNavigateToEditInterests = { screen = Screen.EditInterests },
-                    onLogout = { /* authState will go to Unauthenticated */ },
-                )
                 Screen.CreateListing -> CreateListingScreen(
-                    onBack = { screen = Screen.Discovery },
+                    onBack = { screen = Screen.Publish },
                 )
                 Screen.MyListings -> MyListingsScreen(
                     onBack = { screen = Screen.Profile },
@@ -167,8 +180,8 @@ private fun MainApp() {
                 )
                 is Screen.EditListing -> EditListingScreen(
                     listingId = s.listingId,
-                    onBack = { screen = Screen.MyListings },
-                    onDeleted = { screen = Screen.MyListings },
+                    onBack = { screen = Screen.Publish },
+                    onDeleted = { screen = Screen.Publish },
                 )
                 is Screen.ListingDetail -> ListingDetailScreen(
                     listingId = s.listingId,
@@ -180,8 +193,12 @@ private fun MainApp() {
                     onDone = { screen = Screen.Profile },
                     onBack = { screen = Screen.Profile },
                 )
+                is Screen.UserReviews -> UserReviewsScreen(
+                    userId = s.userId,
+                    onBack = { screen = Screen.Profile },
+                )
                 Screen.Notifications -> NotificationsScreen(
-                    onBack = { screen = previousMainScreen },
+                    onBack = { screen = Screen.Profile },
                 )
                 // Auth screens handled by AuthFlow, not MainApp
                 Screen.Login, Screen.Register, Screen.SelectInterests -> {}
@@ -194,7 +211,7 @@ private fun MainApp() {
 private fun BarterBottomBar(
     current: Screen,
     matchBadgeCount: Int,
-    notificationBadgeCount: Int,
+    unreadMessageCount: Int,
     onNavigate: (Screen) -> Unit,
 ) {
     NavigationBar(
@@ -210,17 +227,10 @@ private fun BarterBottomBar(
         )
 
         NavigationBarItem(
-            selected = current is Screen.Browse,
-            onClick = { onNavigate(Screen.Browse) },
-            icon = { Icon(Icons.Default.GridView, "Browse") },
-            label = { Text("Browse") },
-            colors = colors,
-        )
-        NavigationBarItem(
-            selected = current is Screen.Discovery,
-            onClick = { onNavigate(Screen.Discovery) },
-            icon = { Icon(Icons.Default.Search, "Discover") },
-            label = { Text("Discover") },
+            selected = current is Screen.Swipe,
+            onClick = { onNavigate(Screen.Swipe) },
+            icon = { Icon(Icons.Default.Explore, "Swipe") },
+            label = { Text("Swipe") },
             colors = colors,
         )
         NavigationBarItem(
@@ -243,22 +253,29 @@ private fun BarterBottomBar(
             colors = colors,
         )
         NavigationBarItem(
-            selected = current is Screen.Notifications,
-            onClick = { onNavigate(Screen.Notifications) },
+            selected = current is Screen.Publish,
+            onClick = { onNavigate(Screen.Publish) },
+            icon = { Icon(Icons.Default.AddCircle, "Publish") },
+            label = { Text("Publish") },
+            colors = colors,
+        )
+        NavigationBarItem(
+            selected = current is Screen.ChatList,
+            onClick = { onNavigate(Screen.ChatList) },
             icon = {
                 BadgedBox(
                     badge = {
-                        if (notificationBadgeCount > 0) {
-                            Badge(containerColor = BarterCoral) {
-                                Text("$notificationBadgeCount")
+                        if (unreadMessageCount > 0) {
+                            Badge(containerColor = BarterTeal) {
+                                Text("$unreadMessageCount")
                             }
                         }
                     }
                 ) {
-                    Icon(Icons.Default.Notifications, "Alerts")
+                    Icon(Icons.AutoMirrored.Filled.Chat, "Chat")
                 }
             },
-            label = { Text("Alerts") },
+            label = { Text("Chat") },
             colors = colors,
         )
         NavigationBarItem(

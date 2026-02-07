@@ -394,6 +394,29 @@ class FakeBarterRepository : BarterRepository {
 
     override suspend fun autocompleteLocation(query: String): List<GeocodeSuggestion> = emptyList()
 
+    // ── Reviews ─────────────────────────────────────────────
+
+    private val reviews = mutableListOf<Review>()
+
+    override suspend fun submitReview(dealId: String, rating: Int, comment: String): Review {
+        val uid = loggedInUserId ?: throw Exception("Not logged in")
+        val review = Review(
+            id = "review_${reviews.size + 1}",
+            dealId = dealId,
+            reviewerUserId = uid,
+            reviewedUserId = "other",
+            rating = rating,
+            comment = comment,
+            timestampMs = currentTimeMillis(),
+            reviewerName = "You",
+        )
+        reviews.add(review)
+        return review
+    }
+
+    override suspend fun getReviewsForUser(userId: String): List<Review> =
+        reviews.filter { it.reviewedUserId == userId }
+
     // ── Fake data ────────────────────────────────────────────
     private fun buildFakeListings(): MutableList<Listing> {
         val u1 = UserProfile("u1", "Mihai", "B\u0103l\u021Bi", 4.6)

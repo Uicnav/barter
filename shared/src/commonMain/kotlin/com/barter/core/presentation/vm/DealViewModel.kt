@@ -2,6 +2,7 @@ package com.barter.core.presentation.vm
 
 import com.barter.core.domain.model.*
 import com.barter.core.domain.repo.BarterRepository
+import com.barter.core.domain.usecase.SubmitReviewUseCase
 import com.barter.core.domain.usecase.UpdateDealStatusUseCase
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -16,11 +17,18 @@ data class DealState(
     val cashTopUp: String = "",
     val note: String = "",
     val valueSummary: DealValueSummary? = null,
+    val showReviewDialog: Boolean = false,
+    val reviewDealId: String? = null,
+    val reviewRating: Int = 0,
+    val reviewComment: String = "",
+    val reviewSubmitting: Boolean = false,
+    val reviewSubmitted: Boolean = false,
 )
 
 class DealViewModel(
     private val repo: BarterRepository,
     private val updateStatus: UpdateDealStatusUseCase,
+    private val submitReviewUseCase: SubmitReviewUseCase,
 ) : BaseViewModel() {
 
     private val _matchId = MutableStateFlow<String?>(null)
@@ -30,19 +38,34 @@ class DealViewModel(
     private val _requestValue = MutableStateFlow("")
     private val _cashTopUp = MutableStateFlow("")
     private val _note = MutableStateFlow("")
+    private val _reviewState = MutableStateFlow(ReviewDialogState())
+
+    private data class ReviewDialogState(
+        val show: Boolean = false,
+        val dealId: String? = null,
+        val rating: Int = 0,
+        val comment: String = "",
+        val submitting: Boolean = false,
+        val submitted: Boolean = false,
+    )
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val state: StateFlow<DealState> =
         combine(
-            _matchId.flatMapLatest { id ->
-                if (id == null) flowOf(emptyList()) else repo.observeDeals(id)
-            },
-            _offer,
-            _request,
-            combine(_offerValue, _requestValue, _cashTopUp, _note) { ov, rv, ct, n ->
-                Quad(ov, rv, ct, n)
-            },
-        ) { deals, offer, request, (ov, rv, ct, n) ->
+            combine(
+                _matchId.flatMapLatest { id ->
+                    if (id == null) flowOf(emptyList()) else repo.observeDeals(id)
+                },
+                _offer,
+                _request,
+                combine(_offerValue, _requestValue, _cashTopUp, _note) { ov, rv, ct, n ->
+                    Quad(ov, rv, ct, n)
+                },
+            ) { deals, offer, request, quad -> Triple(deals, offer, Pair(request, quad)) },
+            _reviewState,
+        ) { (deals, offer, reqQuad), review ->
+            val (request, quad) = reqQuad
+            val (ov, rv, ct, n) = quad
             val offerTotal = ov.toDoubleOrNull() ?: 0.0
             val requestTotal = rv.toDoubleOrNull() ?: 0.0
             val diff = offerTotal - requestTotal
@@ -60,6 +83,12 @@ class DealViewModel(
                 deals = deals, offerText = offer, requestText = request,
                 offerValue = ov, requestValue = rv, cashTopUp = ct,
                 note = n, valueSummary = summary,
+                showReviewDialog = review.show,
+                reviewDealId = review.dealId,
+                reviewRating = review.rating,
+                reviewComment = review.comment,
+                reviewSubmitting = review.submitting,
+                reviewSubmitted = review.submitted,
             )
         }.stateIn(scope, SharingStarted.Eagerly, DealState())
 
@@ -107,10 +136,46 @@ class DealViewModel(
 
     fun accept(dealId: String) = setStatus(dealId, DealStatus.ACCEPTED)
     fun reject(dealId: String) = setStatus(dealId, DealStatus.REJECTED)
-    fun complete(dealId: String) = setStatus(dealId, DealStatus.COMPLETED)
+
+    fun complete(dealId: String) {
+        scope.launch {
+            updateStatus(dealId, DealStatus.COMPLETED)
+            _reviewState.value = ReviewDialogState(show = true, dealId = dealId)
+        }
+    }
 
     private fun setStatus(dealId: String, status: DealStatus) {
         scope.launch { updateStatus(dealId, status) }
+    }
+
+    // ── Review dialog ──────────────────────────────────────
+
+    fun onReviewRatingChange(rating: Int) {
+        _reviewState.value = _reviewState.value.copy(rating = rating)
+    }
+
+    fun onReviewCommentChange(text: String) {
+        _reviewState.value = _reviewState.value.copy(comment = text)
+    }
+
+    fun submitReview() {
+        val rs = _reviewState.value
+        val dealId = rs.dealId ?: return
+        if (rs.rating < 1) return
+        scope.launch {
+            _reviewState.value = rs.copy(submitting = true)
+            runCatching { submitReviewUseCase(dealId, rs.rating, rs.comment) }
+                .onSuccess {
+                    _reviewState.value = ReviewDialogState(submitted = true)
+                }
+                .onFailure {
+                    _reviewState.value = rs.copy(submitting = false)
+                }
+        }
+    }
+
+    fun dismissReviewDialog() {
+        _reviewState.value = ReviewDialogState()
     }
 }
 

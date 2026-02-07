@@ -1,10 +1,13 @@
 package com.barter.core.presentation.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -12,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.barter.core.di.AppDI
 import com.barter.core.domain.model.Deal
 import com.barter.core.domain.model.DealStatus
@@ -29,6 +33,26 @@ fun DealScreen(
     val state by vm.state.collectAsState()
 
     LaunchedEffect(matchId) { vm.bind(matchId) }
+
+    // Review dialog
+    if (state.showReviewDialog) {
+        ReviewDialog(
+            rating = state.reviewRating,
+            comment = state.reviewComment,
+            submitting = state.reviewSubmitting,
+            onRatingChange = vm::onReviewRatingChange,
+            onCommentChange = vm::onReviewCommentChange,
+            onSubmit = vm::submitReview,
+            onDismiss = vm::dismissReviewDialog,
+        )
+    }
+
+    // Review submitted snackbar
+    if (state.reviewSubmitted) {
+        LaunchedEffect(Unit) {
+            vm.dismissReviewDialog()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -445,4 +469,114 @@ private fun StatusBadge(status: DealStatus) {
             fontWeight = FontWeight.Bold,
         )
     }
+}
+
+@Composable
+private fun ReviewDialog(
+    rating: Int,
+    comment: String,
+    submitting: Boolean,
+    onRatingChange: (Int) -> Unit,
+    onCommentChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                "Rate this Deal",
+                style = MaterialTheme.typography.titleLarge,
+                color = BarterTeal,
+            )
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    "How was your experience?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                // Star rating
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Spacer(Modifier.weight(1f))
+                    (1..5).forEach { star ->
+                        Icon(
+                            imageVector = if (star <= rating) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = "Star $star",
+                            tint = if (star <= rating) BarterAmber else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clickable { onRatingChange(star) },
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                }
+
+                if (rating > 0) {
+                    Text(
+                        when (rating) {
+                            1 -> "Poor"
+                            2 -> "Fair"
+                            3 -> "Good"
+                            4 -> "Great"
+                            5 -> "Excellent"
+                            else -> ""
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        color = BarterAmber,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+
+                OutlinedTextField(
+                    value = comment,
+                    onValueChange = onCommentChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Comment (optional)") },
+                    placeholder = { Text("Share your experience...") },
+                    minLines = 2,
+                    maxLines = 4,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = BarterTeal,
+                        focusedLabelColor = BarterTeal,
+                        cursorColor = BarterTeal,
+                    ),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onSubmit,
+                enabled = rating > 0 && !submitting,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = BarterTeal),
+            ) {
+                if (submitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White,
+                    )
+                } else {
+                    Text("Submit Review")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Skip")
+            }
+        },
+        shape = RoundedCornerShape(20.dp),
+    )
 }

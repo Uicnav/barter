@@ -34,7 +34,7 @@ import com.barter.core.presentation.vm.MyListingsViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MyListingsScreen(
-    onBack: () -> Unit,
+    onBack: (() -> Unit)? = null,
     onCreateListing: () -> Unit,
     onEditListing: (listingId: String) -> Unit,
 ) {
@@ -90,10 +90,12 @@ fun MyListingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("My Listings") },
+                title = { Text(if (onBack == null) "My Items" else "My Listings") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
