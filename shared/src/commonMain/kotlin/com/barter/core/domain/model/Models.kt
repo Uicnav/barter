@@ -1,5 +1,6 @@
 package com.barter.core.domain.model
 
+import com.barter.core.util.currentTimeMillis
 import kotlinx.serialization.Serializable
 
 // ── Listing types ─────────────────────────────────────────
@@ -109,12 +110,12 @@ data class Listing(
 )
 
 val Listing.isExpired: Boolean
-    get() = validUntilMs != null && validUntilMs < System.currentTimeMillis()
+    get() = validUntilMs != null && validUntilMs < currentTimeMillis()
 
 val Listing.daysRemaining: Int?
     get() {
         val until = validUntilMs ?: return null
-        val diff = until - System.currentTimeMillis()
+        val diff = until - currentTimeMillis()
         return if (diff > 0) (diff / 86_400_000).toInt() else 0
     }
 
@@ -204,6 +205,16 @@ data class EnrichedMatch(
     val match: Match,
     val lastMessage: Message? = null,
     val unreadCount: Int = 0,
+)
+
+// ── Geocode suggestion ───────────────────────────────────
+@Serializable
+data class GeocodeSuggestion(
+    val displayName: String,
+    val city: String,
+    val country: String,
+    val latitude: Double,
+    val longitude: Double,
 )
 
 // ── Notifications ────────────────────────────────────────

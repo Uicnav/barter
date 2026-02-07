@@ -311,7 +311,7 @@ private fun MyListingCard(
                         TextButton(onClick = onRenew) {
                             Icon(Icons.Default.Refresh, null, Modifier.size(16.dp), tint = BarterAmber)
                             Spacer(Modifier.width(4.dp))
-                            Text("Renew (${"%.0f".format(RENEWAL_COST_MDL)} MDL)", color = BarterAmber)
+                            Text("Renew (${RENEWAL_COST_MDL.toInt()} MDL)", color = BarterAmber)
                         }
                     }
 

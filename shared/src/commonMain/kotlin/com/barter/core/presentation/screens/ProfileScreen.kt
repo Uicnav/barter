@@ -258,7 +258,7 @@ fun ProfileScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            "${"%.0f".format(user.balance)} MDL",
+                            "${user.balance.toInt()} MDL",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = BarterGreen,
@@ -280,7 +280,7 @@ fun ProfileScreen(
             }
         }
         Text(
-            "Renewal cost: ${"%.0f".format(RENEWAL_COST_MDL)} MDL per listing",
+            "Renewal cost: ${RENEWAL_COST_MDL.toInt()} MDL per listing",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

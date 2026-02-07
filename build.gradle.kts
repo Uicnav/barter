@@ -1,11 +1,11 @@
 plugins {
     // Kotlin
-    kotlin("multiplatform") version "2.2.0" apply false
-    kotlin("plugin.serialization") version "2.2.0" apply false
-    kotlin("android") version "2.2.0" apply false
+    kotlin("multiplatform") version "2.3.0" apply false
+    kotlin("plugin.serialization") version "2.3.0" apply false
+    kotlin("android") version "2.3.0" apply false
 
     // Required since Kotlin 2.0 when Compose is enabled
-    id("org.jetbrains.kotlin.plugin.compose") version "2.2.0" apply false
+    id("org.jetbrains.kotlin.plugin.compose") version "2.3.0" apply false
 
     // Compose Multiplatform
     id("org.jetbrains.compose") version "1.10.0" apply false

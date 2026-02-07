@@ -86,7 +86,7 @@ private fun DrawScope.drawHexGrid() {
 
             val path = Path()
             for (i in 0..5) {
-                val angle = Math.toRadians((60.0 * i - 30.0)).toFloat()
+                val angle = ((60.0 * i - 30.0) * kotlin.math.PI / 180.0).toFloat()
                 val px = hx + hexR * cos(angle)
                 val py = hy + hexR * sin(angle)
                 if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)

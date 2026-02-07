@@ -200,6 +200,7 @@ fun BrowseScreen(
                             val listing = state.listings[index]
                             BrowseGridCard(
                                 listing = listing,
+                                distanceKm = state.distances[listing.id],
                                 isLiked = listing.id in state.likedIds,
                                 isLiking = state.likingId == listing.id,
                                 onClick = { onOpenListingDetail(listing.id) },
@@ -224,6 +225,7 @@ fun BrowseScreen(
 @Composable
 private fun BrowseGridCard(
     listing: Listing,
+    distanceKm: Double? = null,
     isLiked: Boolean,
     isLiking: Boolean,
     onClick: () -> Unit,
@@ -345,6 +347,15 @@ private fun BrowseGridCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                distanceKm?.let { km ->
+                    val label = if (km < 1) "< 1 km away" else "~${km.toInt()} km away"
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = BarterTeal,
                     )
                 }
             }

@@ -5,12 +5,15 @@ import com.barter.core.domain.model.Listing
 import com.barter.core.domain.model.PredefinedCategories
 import com.barter.core.domain.model.SortOption
 import com.barter.core.domain.model.SwipeAction
+import com.barter.core.domain.repo.BarterRepository
 import com.barter.core.domain.usecase.SearchListingsUseCase
 import com.barter.core.domain.usecase.SwipeUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.*
 
 data class BrowseState(
     val query: String = "",
@@ -23,11 +26,13 @@ data class BrowseState(
     val likedIds: Set<String> = emptySet(),
     val likingId: String? = null,
     val lastMatchId: String? = null,
+    val distances: Map<String, Double> = emptyMap(),
 )
 
 class BrowseViewModel(
     private val searchListings: SearchListingsUseCase,
     private val swipeUseCase: SwipeUseCase,
+    private val repo: BarterRepository,
 ) : BaseViewModel() {
 
     private val _state = MutableStateFlow(BrowseState())
@@ -46,13 +51,39 @@ class BrowseViewModel(
         scope.launch {
             _state.value = _state.value.copy(loading = true, error = null)
             runCatching {
-                searchListings(s.query.trim(), s.selectedCategory, s.sortBy)
-            }.onSuccess { results ->
-                _state.value = _state.value.copy(loading = false, listings = results)
+                val results = searchListings(s.query.trim(), s.selectedCategory, s.sortBy)
+                val user = repo.currentUser.first()
+                val distances = computeDistances(user.latitude, user.longitude, results)
+                results to distances
+            }.onSuccess { (results, distances) ->
+                _state.value = _state.value.copy(
+                    loading = false, listings = results, distances = distances,
+                )
             }.onFailure { e ->
                 _state.value = _state.value.copy(loading = false, error = e.message)
             }
         }
+    }
+
+    private fun computeDistances(
+        userLat: Double?, userLng: Double?, listings: List<Listing>,
+    ): Map<String, Double> {
+        if (userLat == null || userLng == null) return emptyMap()
+        return listings.mapNotNull { listing ->
+            val oLat = listing.owner.latitude ?: return@mapNotNull null
+            val oLng = listing.owner.longitude ?: return@mapNotNull null
+            listing.id to haversineKm(userLat, userLng, oLat, oLng)
+        }.toMap()
+    }
+
+    private fun haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+        val r = 6371.0
+        val dLat = (lat2 - lat1) * PI / 180.0
+        val dLng = (lng2 - lng1) * PI / 180.0
+        val a = sin(dLat / 2).pow(2) +
+            cos(lat1 * PI / 180.0) * cos(lat2 * PI / 180.0) *
+            sin(dLng / 2).pow(2)
+        return r * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 
     fun selectCategory(categoryId: String?) {

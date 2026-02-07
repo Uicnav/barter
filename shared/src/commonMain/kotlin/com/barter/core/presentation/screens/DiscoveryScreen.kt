@@ -147,6 +147,7 @@ fun DiscoveryScreen(
                         ) {
                             SwipeableCardStack(
                                 cards = state.cards,
+                                distances = state.distances,
                                 onSwipeRight = { vm.likeTopCard() },
                                 onSwipeLeft = { vm.passTopCard() },
                                 onCardTap = { onOpenListingDetail(it.id) },
@@ -206,6 +207,7 @@ fun DiscoveryScreen(
 @Composable
 private fun SwipeableCardStack(
     cards: List<Listing>,
+    distances: Map<String, Double> = emptyMap(),
     onSwipeRight: () -> Unit,
     onSwipeLeft: () -> Unit,
     onCardTap: (Listing) -> Unit,
@@ -223,6 +225,7 @@ private fun SwipeableCardStack(
             if (depth > 0) {
                 ListingCard(
                     listing = listing,
+                    distanceKm = distances[listing.id],
                     modifier = Modifier
                         .fillMaxWidth()
                         .fillMaxHeight()
@@ -301,7 +304,11 @@ private fun SwipeableCardStack(
                             )
                         },
                 ) {
-                    ListingCard(listing = top, modifier = Modifier.fillMaxSize())
+                    ListingCard(
+                        listing = top,
+                        distanceKm = distances[top.id],
+                        modifier = Modifier.fillMaxSize(),
+                    )
 
                     // LIKE overlay
                     if (likeAlpha > 0f) {
@@ -366,6 +373,7 @@ private fun SwipeableCardStack(
 @Composable
 private fun ListingCard(
     listing: Listing,
+    distanceKm: Double? = null,
     modifier: Modifier = Modifier,
 ) {
     val gradientColors = when (listing.kind) {
@@ -541,6 +549,15 @@ private fun ListingCard(
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                     )
+
+                    distanceKm?.let { km ->
+                        val label = if (km < 1) "< 1 km" else "~${km.toInt()} km"
+                        Text(
+                            "\u2022 $label",
+                            color = Color.White.copy(alpha = 0.7f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
                 }
 
                 Text(

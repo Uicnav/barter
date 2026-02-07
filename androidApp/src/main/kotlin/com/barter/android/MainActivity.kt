@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.barter.BarterAppRoot
+import com.barter.core.data.AndroidSessionStorage
+import com.barter.core.data.SessionStorage
 import com.barter.core.domain.location.AndroidLocationProvider
 import com.barter.core.domain.location.LocationProvider
 import io.github.vinceglb.filekit.FileKit
@@ -20,6 +22,9 @@ class MainActivity : ComponentActivity() {
         FileKit.init(this)
 
         val platformModule = module {
+            single<SessionStorage> {
+                AndroidSessionStorage(applicationContext)
+            }
             single<LocationProvider> {
                 AndroidLocationProvider(applicationContext)
             }

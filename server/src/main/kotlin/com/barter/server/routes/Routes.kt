@@ -1,11 +1,18 @@
 package com.barter.server.routes
 
 import com.barter.server.db.*
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.request.*
 import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -168,6 +175,44 @@ data class NotificationDto(
     val isRead: Boolean = false,
 )
 
+// ── Geocode DTOs ──────────────────────────────────────────
+
+@Serializable
+data class GeocodeSuggestionDto(
+    val displayName: String,
+    val city: String,
+    val country: String,
+    val latitude: Double,
+    val longitude: Double,
+)
+
+@Serializable
+data class NominatimResult(
+    val lat: String,
+    val lon: String,
+    @SerialName("display_name") val displayName: String,
+    val address: NominatimAddress? = null,
+)
+
+@Serializable
+data class NominatimAddress(
+    val city: String? = null,
+    val town: String? = null,
+    val village: String? = null,
+    val country: String? = null,
+)
+
+// ── HTTP client for geocoding ─────────────────────────────
+
+private val geocodeClient = HttpClient(io.ktor.client.engine.cio.CIO) {
+    install(ContentNegotiation) {
+        json(Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+        })
+    }
+}
+
 // ── Constants ─────────────────────────────────────────────
 
 private const val RENEWAL_COST = 5.0
@@ -291,25 +336,37 @@ fun Route.barterRoutes() {
 
     // GET /api/discovery
     get("/api/discovery") {
+        val userId = call.userId()
         val userLat = call.request.queryParameters["lat"]?.toDoubleOrNull()
         val userLng = call.request.queryParameters["lng"]?.toDoubleOrNull()
 
         val listings = transaction {
-            val all = Listings.selectAll().map { row -> readFullListing(row) }
+            // IDs of listings this user already swiped
+            val swipedIds = Swipes.selectAll()
+                .where { Swipes.fromUserId eq userId }
+                .map { it[Swipes.targetListingId] }
+                .toSet()
+
+            val now = System.currentTimeMillis()
+
+            val all = Listings.selectAll()
+                .where {
+                    (Listings.ownerId neq userId) and
+                        (Listings.isHidden eq false) and
+                        (Listings.availability neq "SOLD")
+                }
+                .map { row -> readFullListing(row) }
+                .filter { it.id !in swipedIds }
+                .filter { it.validUntilMs == null || it.validUntilMs > now }
 
             if (userLat != null && userLng != null) {
                 all.sortedBy { listing ->
-                    val ownerLat = listing.owner.latitude
-                    val ownerLng = listing.owner.longitude
-                    if (ownerLat != null && ownerLng != null) {
-                        haversineDistance(userLat, userLng, ownerLat, ownerLng)
-                    } else {
-                        Double.MAX_VALUE
-                    }
+                    val oLat = listing.owner.latitude
+                    val oLng = listing.owner.longitude
+                    if (oLat != null && oLng != null) haversineDistance(userLat, userLng, oLat, oLng)
+                    else Double.MAX_VALUE
                 }
-            } else {
-                all
-            }
+            } else all
         }
         call.respond(listings)
     }
@@ -615,19 +672,27 @@ fun Route.barterRoutes() {
 
     // GET /api/listings/search
     get("/api/listings/search") {
+        val userId = call.userId()
         val q = call.request.queryParameters["q"]
         val category = call.request.queryParameters["category"]
         val sort = call.request.queryParameters["sort"]
 
         val listings = transaction {
-            var query = Listings.selectAll()
+            val now = System.currentTimeMillis()
+
+            var query = Listings.selectAll().where {
+                (Listings.ownerId neq userId) and
+                    (Listings.isHidden eq false) and
+                    (Listings.availability neq "SOLD")
+            }
 
             // Text search on title
             if (!q.isNullOrBlank()) {
-                query = query.where { Listings.title.lowerCase() like "%${q.lowercase()}%" }
+                query = query.andWhere { Listings.title.lowerCase() like "%${q.lowercase()}%" }
             }
 
             val allListings = query.map { row -> readFullListing(row) }
+                .filter { it.validUntilMs == null || it.validUntilMs > now }
 
             // Filter by tag/category
             val filtered = if (!category.isNullOrBlank()) {
@@ -651,6 +716,17 @@ fun Route.barterRoutes() {
 
     // POST /api/listings
     post("/api/listings") {
+        val userId = call.userId()
+
+        // Verify user exists (stale session after DB reset)
+        val userExists = transaction {
+            Users.selectAll().where { Users.id eq userId }.singleOrNull() != null
+        }
+        if (!userExists) {
+            call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "User not found. Please log in again."))
+            return@post
+        }
+
         val body = call.receive<CreateListingRequest>()
         val now = System.currentTimeMillis()
         val listingId = UUID.randomUUID().toString()
@@ -658,7 +734,7 @@ fun Route.barterRoutes() {
         val listing = transaction {
             Listings.insert {
                 it[id] = listingId
-                it[ownerId] = call.userId()
+                it[ownerId] = userId
                 it[kind] = body.kind
                 it[title] = body.title
                 it[description] = body.description
@@ -936,5 +1012,45 @@ fun Route.barterRoutes() {
         }
 
         call.respond(HttpStatusCode.OK, mapOf("success" to true))
+    }
+
+    // ── Geocode autocomplete ──────────────────────────────
+
+    // GET /api/geocode/autocomplete?q=Chis
+    get("/api/geocode/autocomplete") {
+        val q = call.request.queryParameters["q"] ?: ""
+        if (q.length < 2) {
+            call.respond(emptyList<GeocodeSuggestionDto>())
+            return@get
+        }
+
+        try {
+            val results: List<NominatimResult> = geocodeClient.get(
+                "https://nominatim.openstreetmap.org/search"
+            ) {
+                parameter("q", q)
+                parameter("format", "json")
+                parameter("addressdetails", "1")
+                parameter("limit", "5")
+                parameter("accept-language", "en")
+                header("User-Agent", "BarterApp/1.0")
+            }.body()
+
+            val suggestions = results.map { r ->
+                GeocodeSuggestionDto(
+                    displayName = r.displayName,
+                    city = r.address?.city
+                        ?: r.address?.town
+                        ?: r.address?.village
+                        ?: r.displayName.split(",").first().trim(),
+                    country = r.address?.country ?: "",
+                    latitude = r.lat.toDouble(),
+                    longitude = r.lon.toDouble(),
+                )
+            }
+            call.respond(suggestions)
+        } catch (e: Exception) {
+            call.respond(emptyList<GeocodeSuggestionDto>())
+        }
     }
 }

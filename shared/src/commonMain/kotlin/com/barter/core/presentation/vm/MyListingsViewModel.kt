@@ -8,6 +8,7 @@ import com.barter.core.domain.usecase.LoadMyListingsUseCase
 import com.barter.core.domain.usecase.RenewListingUseCase
 import com.barter.core.domain.usecase.ToggleListingVisibilityUseCase
 import com.barter.core.domain.usecase.UpdateAvailabilityUseCase
+import com.barter.core.util.currentTimeMillis
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -75,7 +76,7 @@ class MyListingsViewModel(
 
     fun renewListing(listingId: String) {
         val thirtyDaysMs = 30L * 24 * 60 * 60 * 1000
-        val newExpiry = System.currentTimeMillis() + thirtyDaysMs
+        val newExpiry = currentTimeMillis() + thirtyDaysMs
         scope.launch {
             runCatching { renewListingUseCase(listingId, newExpiry) }
                 .onSuccess { updated ->

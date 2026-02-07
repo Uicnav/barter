@@ -5,6 +5,7 @@ import com.barter.core.domain.model.ListingKind
 import com.barter.core.domain.model.ListingStatus
 import com.barter.core.domain.model.PredefinedCategories
 import com.barter.core.domain.model.status
+import com.barter.core.util.currentTimeMillis
 import com.barter.core.domain.usecase.DeleteListingUseCase
 import com.barter.core.domain.usecase.GetListingByIdUseCase
 import com.barter.core.domain.usecase.RenewListingUseCase
@@ -124,7 +125,7 @@ class EditListingViewModel(
 
     fun renewListing() {
         val thirtyDaysMs = 30L * 24 * 60 * 60 * 1000
-        val newExpiry = System.currentTimeMillis() + thirtyDaysMs
+        val newExpiry = currentTimeMillis() + thirtyDaysMs
         scope.launch {
             _state.value = _state.value.copy(saving = true, error = null)
             runCatching { renewListingUseCase(listingId, newExpiry) }

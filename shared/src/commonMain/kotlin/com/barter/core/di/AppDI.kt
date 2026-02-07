@@ -1,6 +1,7 @@
 package com.barter.core.di
 
 import com.barter.core.data.KtorBarterRepository
+import com.barter.core.data.SessionStorage
 import com.barter.core.domain.location.LocationProvider
 import com.barter.core.domain.location.LocationResult
 import com.barter.core.domain.repo.BarterRepository
@@ -35,7 +36,12 @@ object AppDI {
                     }
                 }
             }
-            single<BarterRepository> { KtorBarterRepository(get(), BASE_URL) }
+            single<SessionStorage> { object : SessionStorage {
+                override fun saveSession(userJson: String) {}
+                override fun loadSession(): String? = null
+                override fun clearSession() {}
+            } }
+            single<BarterRepository> { KtorBarterRepository(get(), BASE_URL, get()) }
             single<LocationProvider> { object : LocationProvider {
                 override suspend fun getCurrentLocation(): LocationResult? = null
             } }
@@ -65,12 +71,13 @@ object AppDI {
             factory { LoadEnrichedMatchesUseCase(get()) }
             factory { LoadProfileStatsUseCase(get()) }
             factory { GetUnreadCountsUseCase(get()) }
+            factory { AutocompleteLocationUseCase(get()) }
             factory { LoadNotificationsUseCase(get()) }
             factory { GetUnreadNotificationCountUseCase(get()) }
             factory { MarkNotificationReadUseCase(get()) }
 
             // ViewModels
-            single { AuthViewModel(get(), get(), get(), get(), get()) }
+            single { AuthViewModel(get(), get(), get(), get(), get(), get()) }
             factory { DiscoveryViewModel(get(), get(), get()) }
             factory { MatchesViewModel(get()) }
             factory { ChatViewModel(get()) }
@@ -80,7 +87,7 @@ object AppDI {
             factory { MyListingsViewModel(get(), get(), get(), get(), get()) }
             factory { EditListingViewModel(get(), get(), get(), get(), get()) }
             factory { ListingDetailViewModel(get(), get()) }
-            factory { BrowseViewModel(get(), get()) }
+            factory { BrowseViewModel(get(), get(), get()) }
             factory { ProfileStatsViewModel(get()) }
             factory { NotificationsViewModel(get(), get()) }
             single { BadgeViewModel(get(), get()) }

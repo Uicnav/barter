@@ -11,11 +11,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 class KtorBarterRepository(
     private val client: HttpClient,
     private val baseUrl: String = "http://192.168.0.166",
+    private val sessionStorage: SessionStorage = object : SessionStorage {
+        override fun saveSession(userJson: String) {}
+        override fun loadSession(): String? = null
+        override fun clearSession() {}
+    },
 ) : BarterRepository {
+
+    private val json = Json { ignoreUnknownKeys = true }
 
     private var authenticatedUserId: String? = null
 
@@ -30,6 +39,26 @@ class KtorBarterRepository(
         UserProfile("me", "...", "", 0.0)
     )
     override val currentUser: Flow<UserProfile> = _currentUser.asStateFlow()
+
+    init {
+        restoreSession()
+    }
+
+    private fun restoreSession() {
+        val saved = sessionStorage.loadSession() ?: return
+        try {
+            val user = json.decodeFromString<UserProfile>(saved)
+            authenticatedUserId = user.id
+            _currentUser.value = user
+            _authState.value = AuthState.Authenticated(user)
+        } catch (_: Exception) {
+            sessionStorage.clearSession()
+        }
+    }
+
+    private fun persistSession(user: UserProfile) {
+        sessionStorage.saveSession(json.encodeToString(user))
+    }
 
     private val messageCache = mutableMapOf<String, MutableStateFlow<List<Message>>>()
     private val dealCache = mutableMapOf<String, MutableStateFlow<List<Deal>>>()
@@ -52,6 +81,7 @@ class KtorBarterRepository(
             authenticatedUserId = user.id
             _currentUser.value = user
             _authState.value = AuthState.Authenticated(user)
+            persistSession(user)
             Result.success(user)
         } catch (e: Exception) {
             Result.failure(e)
@@ -73,6 +103,7 @@ class KtorBarterRepository(
             authenticatedUserId = user.id
             _currentUser.value = user
             _authState.value = AuthState.Authenticated(user)
+            persistSession(user)
             Result.success(user)
         } catch (e: Exception) {
             Result.failure(e)
@@ -82,6 +113,7 @@ class KtorBarterRepository(
     override suspend fun logout() {
         client.post("$baseUrl/api/auth/logout")
         authenticatedUserId = null
+        sessionStorage.clearSession()
         _authState.value = AuthState.Unauthenticated
         _currentUser.value = UserProfile("me", "...", "", 0.0)
     }
@@ -97,6 +129,7 @@ class KtorBarterRepository(
             setBody(Req(interests))
         }.body()
         _currentUser.value = user
+        persistSession(user)
         val auth = _authState.value
         if (auth is AuthState.Authenticated) {
             _authState.value = AuthState.Authenticated(user)
@@ -307,6 +340,13 @@ class KtorBarterRepository(
         @Serializable data class Resp(val count: Int)
         return client.get("$baseUrl/api/badges/messages") { withUserId() }.body<Resp>().count
     }
+
+    // ── Geocode ──────────────────────────────────────────────
+
+    override suspend fun autocompleteLocation(query: String): List<GeocodeSuggestion> =
+        client.get("$baseUrl/api/geocode/autocomplete") {
+            parameter("q", query)
+        }.body()
 
     // ── Notifications ─────────────────────────────────────────
 

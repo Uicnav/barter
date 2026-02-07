@@ -33,6 +33,7 @@ import com.barter.core.presentation.theme.*
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.readBytes
+import com.barter.core.util.currentTimeMillis
 import kotlinx.coroutines.launch
 
 @Composable
@@ -189,7 +190,7 @@ fun DatePickerButton(
     var showPicker by remember { mutableStateOf(false) }
 
     val formattedDate = selectedMs?.let { ms ->
-        val days = ((ms - System.currentTimeMillis()) / 86_400_000).toInt()
+        val days = ((ms - currentTimeMillis()) / 86_400_000).toInt()
         if (days > 0) "Valid for $days days" else "Expired"
     }
 
@@ -217,7 +218,7 @@ fun DatePickerButton(
 
     if (showPicker) {
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = selectedMs ?: (System.currentTimeMillis() + 30L * 86_400_000),
+            initialSelectedDateMillis = selectedMs ?: (currentTimeMillis() + 30L * 86_400_000),
         )
         DatePickerDialog(
             onDismissRequest = { showPicker = false },

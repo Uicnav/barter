@@ -2,12 +2,16 @@ package com.barter.core.presentation.vm
 
 import com.barter.core.domain.location.LocationProvider
 import com.barter.core.domain.model.AuthState
+import com.barter.core.domain.model.GeocodeSuggestion
 import com.barter.core.domain.model.RegistrationRequest
 import com.barter.core.domain.model.UserProfile
 import com.barter.core.domain.repo.BarterRepository
+import com.barter.core.domain.usecase.AutocompleteLocationUseCase
 import com.barter.core.domain.usecase.LoginUseCase
 import com.barter.core.domain.usecase.LogoutUseCase
 import com.barter.core.domain.usecase.RegisterUseCase
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +35,9 @@ data class RegisterFormState(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val detectingLocation: Boolean = false,
+    val locationSuggestions: List<GeocodeSuggestion> = emptyList(),
+    val showSuggestions: Boolean = false,
+    val locationConfirmed: Boolean = false,
     val loading: Boolean = false,
     val error: String? = null,
 )
@@ -41,6 +48,7 @@ class AuthViewModel(
     private val registerUseCase: RegisterUseCase,
     private val logoutUseCase: LogoutUseCase,
     private val locationProvider: LocationProvider,
+    private val autocompleteUseCase: AutocompleteLocationUseCase,
 ) : BaseViewModel() {
 
     val authState: StateFlow<AuthState> = repo.authState
@@ -91,8 +99,45 @@ class AuthViewModel(
         _registerForm.value = _registerForm.value.copy(displayName = value, error = null)
     }
 
+    private var locationSearchJob: Job? = null
+
     fun onRegisterLocationChange(value: String) {
-        _registerForm.value = _registerForm.value.copy(location = value, error = null)
+        _registerForm.value = _registerForm.value.copy(
+            location = value, error = null,
+            locationConfirmed = false, latitude = null, longitude = null,
+        )
+        locationSearchJob?.cancel()
+        if (value.length >= 2) {
+            locationSearchJob = scope.launch {
+                delay(300)
+                runCatching { autocompleteUseCase(value) }
+                    .onSuccess { suggestions ->
+                        _registerForm.value = _registerForm.value.copy(
+                            locationSuggestions = suggestions,
+                            showSuggestions = suggestions.isNotEmpty(),
+                        )
+                    }
+            }
+        } else {
+            _registerForm.value = _registerForm.value.copy(
+                locationSuggestions = emptyList(), showSuggestions = false,
+            )
+        }
+    }
+
+    fun selectLocationSuggestion(suggestion: GeocodeSuggestion) {
+        _registerForm.value = _registerForm.value.copy(
+            location = "${suggestion.city}, ${suggestion.country}",
+            latitude = suggestion.latitude,
+            longitude = suggestion.longitude,
+            locationConfirmed = true,
+            showSuggestions = false,
+            locationSuggestions = emptyList(),
+        )
+    }
+
+    fun dismissLocationSuggestions() {
+        _registerForm.value = _registerForm.value.copy(showSuggestions = false)
     }
 
     fun onRegisterEmailChange(value: String) {
@@ -117,6 +162,7 @@ class AuthViewModel(
                     latitude = result.latitude,
                     longitude = result.longitude,
                     detectingLocation = false,
+                    locationConfirmed = true,
                 )
             } else {
                 _registerForm.value = _registerForm.value.copy(
@@ -136,6 +182,10 @@ class AuthViewModel(
         }
         if (form.password != form.confirmPassword) {
             _registerForm.value = form.copy(error = "Passwords do not match")
+            return
+        }
+        if (form.location.isNotBlank() && !form.locationConfirmed) {
+            _registerForm.value = form.copy(error = "Please select a location from the suggestions")
             return
         }
 

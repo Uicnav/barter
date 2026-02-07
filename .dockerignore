@@ -1,0 +1,8 @@
+androidApp/build
+desktopApp/build
+webApp/build
+shared/build
+server/build
+.gradle
+.idea
+*.apk

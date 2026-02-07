@@ -4,6 +4,7 @@ import com.barter.core.domain.model.AvailabilityStatus
 import com.barter.core.domain.model.ListingKind
 import com.barter.core.domain.model.PredefinedCategories
 import com.barter.core.domain.model.THIRTY_DAYS_MS
+import com.barter.core.util.currentTimeMillis
 import com.barter.core.domain.usecase.CreateListingUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -86,7 +87,7 @@ class CreateListingViewModel(
                     s.selectedTags.toList(),
                     value,
                     s.imageUrl.trim(),
-                    System.currentTimeMillis() + THIRTY_DAYS_MS,
+                    currentTimeMillis() + THIRTY_DAYS_MS,
                 )
             }.onSuccess {
                 _state.value = CreateListingState(saved = true)

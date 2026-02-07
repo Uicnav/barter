@@ -7,15 +7,19 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.barter.core.di.AppDI
 import com.barter.core.presentation.components.rememberLocationPermissionLauncher
@@ -87,41 +91,85 @@ fun RegisterScreen(
                 ),
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedTextField(
-                    value = form.location,
-                    onValueChange = vm::onRegisterLocationChange,
-                    modifier = Modifier.weight(1f),
-                    label = { Text("Location") },
-                    placeholder = { Text("City, Country") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = BarterTeal,
-                        focusedLabelColor = BarterTeal,
-                        cursorColor = BarterTeal,
-                    ),
-                )
-                Spacer(Modifier.width(8.dp))
-                IconButton(
-                    onClick = { locationPermissionLauncher.launch() },
-                    enabled = !form.detectingLocation,
+            Box {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (form.detectingLocation) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = BarterTeal,
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        Icon(
-                            Icons.Default.MyLocation,
-                            contentDescription = "Detect location",
-                            tint = BarterTeal,
+                    OutlinedTextField(
+                        value = form.location,
+                        onValueChange = vm::onRegisterLocationChange,
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Location") },
+                        placeholder = { Text("Start typing a city...") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = BarterTeal,
+                            focusedLabelColor = BarterTeal,
+                            cursorColor = BarterTeal,
+                        ),
+                        trailingIcon = {
+                            if (form.locationConfirmed) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = "Confirmed",
+                                    tint = BarterGreen,
+                                )
+                            }
+                        },
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    IconButton(
+                        onClick = { locationPermissionLauncher.launch() },
+                        enabled = !form.detectingLocation,
+                    ) {
+                        if (form.detectingLocation) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = BarterTeal,
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.MyLocation,
+                                contentDescription = "Detect location",
+                                tint = BarterTeal,
+                            )
+                        }
+                    }
+                }
+
+                DropdownMenu(
+                    expanded = form.showSuggestions,
+                    onDismissRequest = { vm.dismissLocationSuggestions() },
+                ) {
+                    form.locationSuggestions.forEach { suggestion ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(
+                                        "${suggestion.city}, ${suggestion.country}",
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                    Text(
+                                        suggestion.displayName,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            onClick = { vm.selectLocationSuggestion(suggestion) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    tint = BarterTeal,
+                                )
+                            },
                         )
                     }
                 }

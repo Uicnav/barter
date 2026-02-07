@@ -19,6 +19,7 @@ import com.barter.core.di.AppDI
 import com.barter.core.domain.model.ListingKind
 import com.barter.core.domain.model.ListingStatus
 import com.barter.core.domain.model.RENEWAL_COST_MDL
+import com.barter.core.util.currentTimeMillis
 import com.barter.core.presentation.components.AvailabilityBadge
 import com.barter.core.presentation.components.AvailabilityPicker
 import com.barter.core.presentation.components.ListingStatusBadge
@@ -173,11 +174,11 @@ fun EditListingScreen(
                     ) {
                         Icon(Icons.Default.Refresh, null, tint = BarterTeal, modifier = Modifier.size(18.dp))
                         val daysText = state.validUntilMs?.let {
-                            val days = ((it - System.currentTimeMillis()) / 86_400_000).toInt()
+                            val days = ((it - currentTimeMillis()) / 86_400_000).toInt()
                             if (days > 0) "$days days remaining" else "Expired"
                         } ?: "No expiry set"
                         Text(
-                            "Validity: $daysText (30-day periods, renewal costs ${"%.0f".format(RENEWAL_COST_MDL)} MDL)",
+                            "Validity: $daysText (30-day periods, renewal costs ${RENEWAL_COST_MDL.toInt()} MDL)",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -282,7 +283,7 @@ fun EditListingScreen(
                     ) {
                         Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Renew +30 days (${"%.0f".format(RENEWAL_COST_MDL)} MDL)")
+                        Text("Renew +30 days (${RENEWAL_COST_MDL.toInt()} MDL)")
                     }
                 }
 

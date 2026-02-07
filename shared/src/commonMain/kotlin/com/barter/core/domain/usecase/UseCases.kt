@@ -127,6 +127,12 @@ class GetUnreadCountsUseCase(private val repo: BarterRepository) {
     suspend fun messageCount(): Int = repo.getTotalUnreadMessageCount()
 }
 
+// ── Geocode ──────────────────────────────────────────────
+class AutocompleteLocationUseCase(private val repo: BarterRepository) {
+    suspend operator fun invoke(query: String): List<GeocodeSuggestion> =
+        repo.autocompleteLocation(query)
+}
+
 // ── Notifications ────────────────────────────────────────
 class LoadNotificationsUseCase(private val repo: BarterRepository) {
     suspend operator fun invoke(): List<Notification> = repo.getNotifications()

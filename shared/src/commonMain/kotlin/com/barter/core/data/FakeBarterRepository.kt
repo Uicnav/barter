@@ -2,6 +2,7 @@ package com.barter.core.data
 
 import com.barter.core.domain.model.*
 import com.barter.core.domain.repo.BarterRepository
+import com.barter.core.util.currentTimeMillis
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,7 +39,7 @@ class FakeBarterRepository : BarterRepository {
         listings.addAll(buildFakeListings())
 
         // Seed notifications
-        val now = System.currentTimeMillis()
+        val now = currentTimeMillis()
         notifications.addAll(listOf(
             Notification(
                 id = "n1", recipientUserId = "me",
@@ -75,7 +76,7 @@ class FakeBarterRepository : BarterRepository {
 
     override suspend fun register(request: RegistrationRequest): Result<UserProfile> {
         if (userDb.containsKey(request.email)) return Result.failure(Exception("An account with this email already exists"))
-        val userId = "u_${System.currentTimeMillis()}"
+        val userId = "u_${currentTimeMillis()}"
         val profile = UserProfile(
             id = userId, displayName = request.displayName, location = request.location,
             rating = 5.0, email = request.email, interests = emptyList(), hasSelectedInterests = false,
@@ -109,7 +110,7 @@ class FakeBarterRepository : BarterRepository {
         tags: List<String>, estimatedValue: Double?,
         imageUrl: String, validUntilMs: Long?,
     ): Listing {
-        val now = System.currentTimeMillis()
+        val now = currentTimeMillis()
         val listing = Listing(
             id = "l_${now}", owner = me(), kind = kind,
             title = title, description = description, tags = tags,
@@ -161,7 +162,7 @@ class FakeBarterRepository : BarterRepository {
         // Charge renewal cost
         val currentBalance = _currentUser.value.balance
         if (currentBalance < RENEWAL_COST_MDL) {
-            throw Exception("Insufficient balance. You need ${"%.0f".format(RENEWAL_COST_MDL)} MDL to renew. Current balance: ${"%.0f".format(currentBalance)} MDL")
+            throw Exception("Insufficient balance. You need ${RENEWAL_COST_MDL.toInt()} MDL to renew. Current balance: ${currentBalance.toInt()} MDL")
         }
         val updatedUser = _currentUser.value.copy(balance = currentBalance - RENEWAL_COST_MDL)
         _currentUser.value = updatedUser
@@ -257,7 +258,7 @@ class FakeBarterRepository : BarterRepository {
     override suspend fun swipe(listingId: String, action: SwipeAction): Match? {
         if (action == SwipeAction.PASS) return null
         val listing = listings.firstOrNull { it.id == listingId } ?: return null
-        val now = System.currentTimeMillis()
+        val now = currentTimeMillis()
 
         // Always create "liked your listing" notification for the owner
         notifications.add(
@@ -328,8 +329,8 @@ class FakeBarterRepository : BarterRepository {
     override suspend fun sendMessage(matchId: String, text: String) {
         val flow = messagesByMatch.getOrPut(matchId) { MutableStateFlow(emptyList()) }
         val msg = Message(
-            id = "m_${System.currentTimeMillis()}", matchId = matchId,
-            fromUserId = me().id, text = text, timestampMs = System.currentTimeMillis(),
+            id = "m_${currentTimeMillis()}", matchId = matchId,
+            fromUserId = me().id, text = text, timestampMs = currentTimeMillis(),
         )
         flow.update { it + msg }
     }
@@ -344,9 +345,9 @@ class FakeBarterRepository : BarterRepository {
     ) {
         val flow = dealsByMatch.getOrPut(matchId) { MutableStateFlow(emptyList()) }
         val deal = Deal(
-            id = "d_${System.currentTimeMillis()}", matchId = matchId,
+            id = "d_${currentTimeMillis()}", matchId = matchId,
             proposerUserId = me().id, offer = offer, request = request,
-            status = DealStatus.PROPOSED, createdAtMs = System.currentTimeMillis(),
+            status = DealStatus.PROPOSED, createdAtMs = currentTimeMillis(),
             cashTopUp = cashTopUp, note = note,
         )
         flow.update { it + deal }
@@ -391,6 +392,8 @@ class FakeBarterRepository : BarterRepository {
         }
     }
 
+    override suspend fun autocompleteLocation(query: String): List<GeocodeSuggestion> = emptyList()
+
     // ── Fake data ────────────────────────────────────────────
     private fun buildFakeListings(): MutableList<Listing> {
         val u1 = UserProfile("u1", "Mihai", "B\u0103l\u021Bi", 4.6)
@@ -401,7 +404,7 @@ class FakeBarterRepository : BarterRepository {
         val u6 = UserProfile("u6", "Elena", "Chi\u0219in\u0103u", 4.8)
         val u7 = UserProfile("u7", "Andrei", "B\u0103l\u021Bi", 4.5)
         val u8 = UserProfile("u8", "Maria", "Comrat", 4.9)
-        val now = System.currentTimeMillis()
+        val now = currentTimeMillis()
 
         return mutableListOf(
             Listing("l1", u1, ListingKind.GOODS, "Schimb biciclet\u0103",

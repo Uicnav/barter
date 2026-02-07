@@ -68,6 +68,9 @@ interface BarterRepository {
     suspend fun getUnreadMatchCount(): Int
     suspend fun getTotalUnreadMessageCount(): Int
 
+    // Geocode
+    suspend fun autocompleteLocation(query: String): List<GeocodeSuggestion>
+
     // Notifications
     suspend fun getNotifications(): List<Notification>
     suspend fun getUnreadNotificationCount(): Int

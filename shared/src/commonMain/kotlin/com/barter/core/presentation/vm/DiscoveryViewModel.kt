@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.*
 
 data class DiscoveryState(
     val loading: Boolean = false,
@@ -21,6 +22,7 @@ data class DiscoveryState(
     val selectedCategory: String? = null,
     val lastSwipedCard: Listing? = null,
     val lastMatchId: String? = null,
+    val distances: Map<String, Double> = emptyMap(),
     val error: String? = null,
 )
 
@@ -38,8 +40,10 @@ class DiscoveryViewModel(
             _state.value = _state.value.copy(loading = true, error = null, lastMatchId = null)
             runCatching {
                 val user = repo.currentUser.first()
-                loadDiscovery(user.interests)
-            }.onSuccess { cards ->
+                val cards = loadDiscovery(user.interests)
+                val distances = computeDistances(user.latitude, user.longitude, cards)
+                Triple(cards, distances, user)
+            }.onSuccess { (cards, distances, _) ->
                 val tagSet = cards.flatMap { it.tags }.toSet()
                 val categories = PredefinedCategories.all.filter { it.id in tagSet }
                 _state.value = _state.value.copy(
@@ -48,11 +52,33 @@ class DiscoveryViewModel(
                     allCards = cards,
                     categories = categories,
                     selectedCategory = null,
+                    distances = distances,
                 )
             }.onFailure { e ->
                 _state.value = _state.value.copy(loading = false, error = e.message)
             }
         }
+    }
+
+    private fun computeDistances(
+        userLat: Double?, userLng: Double?, cards: List<Listing>,
+    ): Map<String, Double> {
+        if (userLat == null || userLng == null) return emptyMap()
+        return cards.mapNotNull { listing ->
+            val oLat = listing.owner.latitude ?: return@mapNotNull null
+            val oLng = listing.owner.longitude ?: return@mapNotNull null
+            listing.id to haversineKm(userLat, userLng, oLat, oLng)
+        }.toMap()
+    }
+
+    private fun haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+        val r = 6371.0
+        val dLat = (lat2 - lat1) * PI / 180.0
+        val dLng = (lng2 - lng1) * PI / 180.0
+        val a = sin(dLat / 2).pow(2) +
+            cos(lat1 * PI / 180.0) * cos(lat2 * PI / 180.0) *
+            sin(dLng / 2).pow(2)
+        return r * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 
     fun selectCategory(categoryId: String?) {
